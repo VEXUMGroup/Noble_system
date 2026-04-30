@@ -182,7 +182,7 @@ export default function NewDealPage() {
               value={formData.customer_name}
               onChange={handleChange}
               placeholder="例: 山田太郎"
-              className={inputClass('customer_name')}
+              className={inputCls('customer_name')}
             />
             {errors.customer_name && <p className="text-red-500 text-xs mt-1">{errors.customer_name}</p>}
           </div>
@@ -196,7 +196,7 @@ export default function NewDealPage() {
               name="assigned_to"
               value={formData.assigned_to}
               onChange={handleChange}
-              className={inputClass('assigned_to')}
+              className={selectCls('assigned_to')}
             >
               <option value="">-- 選択してください --</option>
               {mockUsers.map((user) => (
@@ -213,7 +213,7 @@ export default function NewDealPage() {
               name="result_status"
               value={formData.result_status}
               onChange={handleChange}
-              className={inputClass('result_status')}
+              className={selectCls('result_status')}
             >
               <option value="">-- 未選択 --</option>
               {resultStatuses.map((s) => (
@@ -232,7 +232,7 @@ export default function NewDealPage() {
               name="deal_date"
               value={formData.deal_date}
               onChange={handleChange}
-              className={inputClass('deal_date')}
+              className={inputCls('deal_date')}
             />
             {errors.deal_date && <p className="text-red-500 text-xs mt-1">{errors.deal_date}</p>}
           </div>
@@ -244,7 +244,7 @@ export default function NewDealPage() {
               name="prospect_level"
               value={formData.prospect_level}
               onChange={handleChange}
-              className={inputClass('prospect_level')}
+              className={selectCls('prospect_level')}
             >
               <option value="">-- 未選択 --</option>
               {prospectLevels.map((p) => (
@@ -262,7 +262,7 @@ export default function NewDealPage() {
               name="source"
               value={formData.source}
               onChange={handleChange}
-              className={inputClass('source')}
+              className={selectCls('source')}
             >
               <option value="">-- 選択してください --</option>
               {mockSources.map((s) => (
@@ -281,7 +281,7 @@ export default function NewDealPage() {
               value={formData.referrer}
               onChange={handleChange}
               placeholder="例: 代理店A"
-              className={inputClass('referrer')}
+              className={inputCls('referrer')}
             />
           </div>
 
@@ -295,7 +295,7 @@ export default function NewDealPage() {
               name="retirement_date"
               value={formData.retirement_date}
               onChange={handleChange}
-              className={inputClass('retirement_date')}
+              className={inputCls('retirement_date')}
             />
             {errors.retirement_date && <p className="text-red-500 text-xs mt-1">{errors.retirement_date}</p>}
           </div>
@@ -307,7 +307,7 @@ export default function NewDealPage() {
               name="agency_type"
               value={formData.agency_type}
               onChange={handleChange}
-              className={inputClass('agency_type')}
+              className={selectCls('agency_type')}
             >
               <option value="">-- 未選択 --</option>
               {agencyTypes.map((a) => (
@@ -342,7 +342,7 @@ export default function NewDealPage() {
               name="next_action_date"
               value={formData.next_action_date}
               onChange={handleChange}
-              className={inputClass('next_action_date')}
+              className={inputCls('next_action_date')}
             />
           </div>
 
@@ -354,7 +354,7 @@ export default function NewDealPage() {
               value={formData.recording_url}
               onChange={handleChange}
               placeholder="https://..."
-              className={inputClass('recording_url')}
+              className={inputCls('recording_url')}
             />
           </div>
         </div>
