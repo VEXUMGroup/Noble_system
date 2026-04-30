@@ -28,6 +28,9 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const router = useRouter();
   const deal = mockDeals.find((item) => item.id === params.id);
 
+  // ローカルでステータスを管理（モックデータ変更をUIに即反映するため）
+  const [dealStatus, setDealStatus] = useState(deal?.status ?? 'NEW');
+
   // 面談記録フォームの状態（NEW のとき表示）
   const [interviewStatus, setInterviewStatus] = useState('');
   const [interviewError, setInterviewError] = useState('');
@@ -59,21 +62,21 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     );
   }
 
-  // ── 面談記録を保存（NEW → INTERVIEWED or 結果ステータス）
+  // ── 面談記録を保存（NEW → INTERVIEWED or NEW のまま）
   const handleSaveInterview = () => {
     if (!interviewStatus) {
       setInterviewError('面談ステータスを選択してください');
       return;
     }
+    const newStatus = interviewStatus === '面談実施' ? 'INTERVIEWED' : 'NEW';
     deal.interview_status = interviewStatus;
-    deal.status = interviewStatus === '面談実施' ? 'INTERVIEWED' : 'NEW';
+    deal.status = newStatus;
     deal.updated_at = new Date().toISOString();
+    setDealStatus(newStatus);
     setInterviewError('');
     setSuccessMessage('面談記録を保存しました');
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 2500);
-    // 画面を再レンダーするため state を更新（react的な再描画トリガー）
-    router.refresh();
   };
 
   // ── 結果を保存（INTERVIEWED → 成約/検討/対象外/失注）
@@ -102,6 +105,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       deal.lost_reason_comment = lostComment || undefined;
     }
     deal.updated_at = new Date().toISOString();
+    setDealStatus(mappedStatus);
     setResultError('');
     setSuccessMessage(`結果「${resultStatus}」を保存しました`);
     setShowSuccess(true);
@@ -110,12 +114,14 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       setTimeout(() => router.push(`/deals/${deal.id}/contract-detail`), 1200);
     } else {
       setTimeout(() => setShowSuccess(false), 2500);
-      router.refresh();
     }
   };
 
   const selectClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
   const selectErrorClass = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400';
+
+  const isContractedOrLater = ['CONTRACTED', 'DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(dealStatus);
+  const isDetailEnteredOrLater = ['DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(dealStatus);
 
   return (
     <div className="space-y-6">
@@ -141,7 +147,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
             <p className="text-xs text-gray-400 mb-1">顧客名</p>
             <p className="text-xl font-bold text-gray-900">{deal.customer_name}</p>
           </div>
-          <StatusBadge status={deal.status} />
+          <StatusBadge status={dealStatus} />
         </div>
 
         <dl className="divide-y divide-gray-100">
@@ -159,7 +165,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
             </div>
           ))}
 
-          {/* 面談済みの場合は記録した情報を表示 */}
           {deal.interview_status && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
               <dt className="text-sm font-medium text-gray-500">面談ステータス</dt>
@@ -185,7 +190,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         </dl>
 
         {/* 成約以降のアクションリンク */}
-        {['CONTRACTED', 'DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(deal.status) && (
+        {isContractedOrLater && (
           <div className="flex flex-wrap gap-3 mt-5 pt-4 border-t border-gray-100">
             <Link
               href={`/deals/${deal.id}/contract-detail`}
@@ -193,7 +198,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
             >
               成約詳細を入力
             </Link>
-            {['DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(deal.status) && (
+            {isDetailEnteredOrLater && (
               <Link
                 href={`/deals/${deal.id}/approval`}
                 className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700"
@@ -206,7 +211,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       </div>
 
       {/* ── STEP 1: 面談記録（NEW のとき） ── */}
-      {deal.status === 'NEW' && (
+      {dealStatus === 'NEW' && (
         <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-400">
           <h2 className="text-base font-bold text-gray-900 mb-1">面談結果を記録する</h2>
           <p className="text-xs text-gray-500 mb-4">面談が完了したら、ステータスを更新してください。</p>
@@ -240,7 +245,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       )}
 
       {/* ── STEP 2: 結果入力（INTERVIEWED のとき） ── */}
-      {deal.status === 'INTERVIEWED' && (
+      {dealStatus === 'INTERVIEWED' && (
         <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
           <h2 className="text-base font-bold text-gray-900 mb-1">面談結果を入力する</h2>
           <p className="text-xs text-gray-500 mb-5">成約・検討・対象外・失注のいずれかを選択してください。</p>
