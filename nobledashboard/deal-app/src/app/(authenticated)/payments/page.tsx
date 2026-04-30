@@ -193,21 +193,21 @@ export default function PaymentsPage() {
           { label: '全額入金完了', count: summary.paid, color: 'border-green-500', textColor: 'text-green-600' },
           { label: '合計', count: summary.total, color: 'border-blue-500', textColor: 'text-blue-600' },
         ].map((s, i) => (
-          <div key={i} className={`bg-white rounded-xl shadow-sm p-5 border-l-4 ${s.color} text-center`}>
-            <p className={`text-3xl font-bold ${s.textColor}`}>{s.count}</p>
+          <div key={i} className={`bg-white rounded-xl shadow-sm p-3 sm:p-5 border-l-4 ${s.color} text-center`}>
+            <p className={`text-2xl sm:text-3xl font-bold ${s.textColor}`}>{s.count}</p>
             <p className="text-xs text-gray-500 mt-1">{s.label}</p>
           </div>
         ))}
       </div>
 
       {/* Payment List */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-bold text-gray-900">支払い一覧</h2>
           <select
             value={paymentStatusFilter}
             onChange={(e) => setPaymentStatusFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">すべて</option>
             <option value="unpaid">未入金</option>
@@ -216,7 +216,44 @@ export default function PaymentsPage() {
           </select>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* モバイル: カード表示 */}
+        <div className="sm:hidden space-y-3">
+          {filteredDeals.map((pd) => (
+            <div
+              key={pd.deal.id}
+              className={`rounded-xl border p-4 ${pd.status === '未入金' ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50'}`}
+            >
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <p className="font-semibold text-gray-900">{pd.deal.customer_name}</p>
+                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${pd.statusColor}`}>
+                  {pd.status}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-gray-600 mb-3">
+                <div><span className="text-gray-400">成約金額</span><br /><span className="font-semibold text-gray-900">{formatCurrency(pd.deal.amount)}</span></div>
+                <div><span className="text-gray-400">入金済</span><br /><span className="font-semibold text-green-600">{formatCurrency(pd.paid)}</span></div>
+                <div><span className="text-gray-400">未払い</span><br /><span className={`font-semibold ${pd.unpaid > 0 ? 'text-red-600' : 'text-green-600'}`}>{formatCurrency(pd.unpaid)}</span></div>
+                <div><span className="text-gray-400">入金期日</span><br /><span className="text-gray-900">{formatDate(pd.deal.payment_deadline)}</span></div>
+                <div><span className="text-gray-400">支払方法</span><br /><span>{pd.deal.payment_method === 'stripe' ? 'Stripe' : pd.deal.payment_method === 'transfer' ? '振り込み' : pd.deal.payment_method || '-'}</span></div>
+                <div><span className="text-gray-400">支払プラン</span><br /><span>{pd.deal.payment_plan || '一括'}</span></div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleOpenPaymentModal(pd)}
+                className={`w-full py-2 rounded-lg text-sm font-semibold transition ${
+                  pd.status === '全額入金完了'
+                    ? 'bg-gray-200 text-gray-600'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {pd.status === '全額入金完了' ? '履歴を確認' : '入金を入力'}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* デスクトップ: テーブル表示 */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-blue-600 text-white">
               <tr>
@@ -269,7 +306,7 @@ export default function PaymentsPage() {
       {/* 入金入力モーダル */}
       {selectedDeal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl mx-4">
+          <div className="bg-white rounded-xl p-4 sm:p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl mx-4">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-blue-600">
               <h3 className="text-lg font-bold text-gray-900">
@@ -464,10 +501,36 @@ export default function PaymentsPage() {
 
       {/* 代理店コミッション管理 */}
       {commissions.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
           <h2 className="text-base font-bold text-gray-900 mb-1">代理店コミッション管理</h2>
           <p className="text-xs text-gray-400 mb-4">コミッション自動計算: 利用者の支払総額の50%到達時に、その25%を代理店への支払額として自動計算</p>
-          <div className="overflow-x-auto">
+
+          {/* モバイル: カード表示 */}
+          <div className="sm:hidden space-y-3">
+            {commissions.map((c, i) => (
+              <div key={i} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div>
+                    <p className="text-xs text-gray-400">代理店</p>
+                    <p className="font-semibold text-gray-900 text-sm">{c.agency}</p>
+                  </div>
+                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${c.triggered ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                    {c.triggered ? '発生済' : '未発生'}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mb-2">対象顧客: <span className="text-gray-900 font-medium">{c.customer}</span></p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-gray-600">
+                  <div><span className="text-gray-400">成約金額</span><br /><span className="font-semibold text-gray-900">{formatCurrency(c.amount)}</span></div>
+                  <div><span className="text-gray-400">入金済 ({c.pct})</span><br /><span className="font-semibold text-green-600">{formatCurrency(c.paid)}</span></div>
+                  <div><span className="text-gray-400">トリガー(50%)</span><br /><span className="text-gray-900">{formatCurrency(c.trigger)}</span></div>
+                  <div><span className="text-gray-400">コミッション(25%)</span><br /><span className="font-semibold text-yellow-600">{formatCurrency(c.commission)}</span></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* デスクトップ: テーブル表示 */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-blue-600 text-white">
                 <tr>
@@ -500,7 +563,7 @@ export default function PaymentsPage() {
       )}
 
       {/* 通知設定 */}
-      <div className="bg-yellow-50 rounded-xl shadow-sm p-6">
+      <div className="bg-yellow-50 rounded-xl shadow-sm p-4 sm:p-6">
         <h2 className="text-base font-bold text-gray-900 mb-3">通知設定</h2>
         <div className="text-sm text-gray-700 space-y-1">
           <p>会計日3日前: 支払期日の3日前にダッシュボード通知 + LINE連携でリマインド</p>

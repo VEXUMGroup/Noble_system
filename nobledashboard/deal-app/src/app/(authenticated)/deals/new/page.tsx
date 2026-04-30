@@ -128,7 +128,7 @@ export default function NewDealPage() {
       )}
 
       {/* Form */}
-      <div className="bg-white rounded-xl shadow-sm p-6 space-y-5">
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 space-y-5">
 
         {/* 顧客名 */}
         <div>

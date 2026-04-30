@@ -172,7 +172,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">商談詳細</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">商談詳細</h1>
           <p className="text-xs text-gray-400 mt-1">{deal.id}</p>
         </div>
         <Link href="/deals" className="text-sm text-blue-600 hover:text-blue-700">← 商談一覧</Link>
@@ -185,7 +185,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       )}
 
       {/* 基本情報 */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
         <div className="flex items-center justify-between gap-4 mb-5">
           <div className="flex-1">
             <p className="text-xs text-gray-400 mb-1">顧客名</p>
@@ -341,7 +341,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
       {/* ── STEP 1: 面談記録（NEW のとき） ── */}
       {dealStatus === 'NEW' && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-400">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-purple-400">
           <h2 className="text-base font-bold text-gray-900 mb-1">面談結果を記録する</h2>
           <p className="text-xs text-gray-500 mb-4">面談が完了したら、ステータスを更新してください。</p>
 
@@ -375,7 +375,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
       {/* ── STEP 2: 結果入力（INTERVIEWED のとき） ── */}
       {dealStatus === 'INTERVIEWED' && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-blue-500">
           <h2 className="text-base font-bold text-gray-900 mb-1">面談結果を入力する</h2>
           <p className="text-xs text-gray-500 mb-5">成約・検討・対象外・失注のいずれかを選択してください。</p>
 
