@@ -194,6 +194,22 @@ export const mockDeals: Deal[] = [
     phone: '090-0000-0003',
     email: 'takahashi@example.com',
   },
+  {
+    id: 'D-20260430-005',
+    customer_name: '山本 さくら',
+    status: 'NEW',
+    assigned_to: 'u002',
+    deal_date: '2026-04-30',
+    retirement_date: '2026-06-30',
+    updated_at: '2026-04-30T10:00:00+09:00',
+    source: 'REF',
+    source_code: 'REF',
+    agency_code: 'AG002',
+    memo: '紹介経由。退職後の転職支援希望。',
+    address: '埼玉県さいたま市大宮区4-4-4',
+    phone: '090-0000-0005',
+    email: 'yamamoto.sakura@example.com',
+  },
 ];
 
 export const mockPaymentRecords: PaymentRecord[] = [
