@@ -6,7 +6,9 @@ import {
   mockDeals,
   mockUsers,
   mockSources,
-  mockAgencies,
+  resultStatuses,
+  prospectLevels,
+  agencyTypes,
   type Deal,
 } from '@/lib/mock-data';
 
@@ -16,8 +18,14 @@ interface FormData {
   deal_date: string;
   source: string;
   retirement_date: string;
-  agency_code: string;
+  result_status: string;
+  prospect_level: string;
+  referrer: string;
+  agency_type: string;
   memo: string;
+  next_action_date: string;
+  recording_url: string;
+  remarks: string;
 }
 
 export default function NewDealPage() {
@@ -28,8 +36,14 @@ export default function NewDealPage() {
     deal_date: '',
     source: '',
     retirement_date: '',
-    agency_code: '',
+    result_status: '',
+    prospect_level: '',
+    referrer: '',
+    agency_type: '',
     memo: '',
+    next_action_date: '',
+    recording_url: '',
+    remarks: '',
   });
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [showSuccess, setShowSuccess] = useState(false);
@@ -51,7 +65,7 @@ export default function NewDealPage() {
     if (!formData.assigned_to) newErrors.assigned_to = '必須項目です';
     if (!formData.deal_date) newErrors.deal_date = '必須項目です';
     if (!formData.source) newErrors.source = '必須項目です';
-    if (!formData.retirement_date.trim()) newErrors.retirement_date = '必須項目です';
+    if (!formData.retirement_date) newErrors.retirement_date = '必須項目です';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -68,8 +82,14 @@ export default function NewDealPage() {
       source_code: formData.source,
       status: 'NEW',
       retirement_date: formData.retirement_date,
-      agency_code: formData.agency_code || undefined,
+      result_status: formData.result_status || undefined,
+      prospect_level: formData.prospect_level || undefined,
+      referrer: formData.referrer || undefined,
+      agency_type: formData.agency_type || undefined,
       memo: formData.memo || undefined,
+      next_action_date: formData.next_action_date || undefined,
+      recording_url: formData.recording_url || undefined,
+      remarks: formData.remarks || undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -95,13 +115,15 @@ export default function NewDealPage() {
       errors[field] ? 'border-red-500' : 'border-gray-300'
     }`;
 
+  const labelClass = 'block text-sm font-semibold text-gray-700 mb-1';
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b-2 border-blue-600">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">新規商談登録</h1>
-          <p className="text-xs text-gray-500 mt-1">基本情報を登録します。面談結果は登録後の詳細画面から入力できます。</p>
+          <p className="text-xs text-gray-500 mt-1">基本情報・面談結果・メモをまとめて登録できます。</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -127,30 +149,30 @@ export default function NewDealPage() {
         </div>
       )}
 
-      {/* Form */}
-      <div className="bg-white rounded-xl shadow-sm p-6 space-y-5">
-
-        {/* 顧客名 */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">
-            お客様氏名 <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="customer_name"
-            value={formData.customer_name}
-            onChange={handleChange}
-            placeholder="例：山田 太郎"
-            className={inputClass('customer_name')}
-          />
-          {errors.customer_name && <p className="text-red-500 text-xs mt-1">{errors.customer_name}</p>}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {/* 担当者 */}
+      {/* 上段：基本情報・面談関連（2カラム） */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+          {/* === 左カラム === */}
+          {/* お客様氏名 */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              担当者 <span className="text-red-500">*</span>
+            <label className={labelClass}>
+              お客様氏名 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="customer_name"
+              value={formData.customer_name}
+              onChange={handleChange}
+              placeholder="例: 山田太郎"
+              className={inputClass('customer_name')}
+            />
+            {errors.customer_name && <p className="text-red-500 text-xs mt-1">{errors.customer_name}</p>}
+          </div>
+
+          {/* 担当 */}
+          <div>
+            <label className={labelClass}>
+              担当 <span className="text-red-500">*</span>
             </label>
             <select
               name="assigned_to"
@@ -158,7 +180,7 @@ export default function NewDealPage() {
               onChange={handleChange}
               className={inputClass('assigned_to')}
             >
-              <option value="">-- 選択 --</option>
+              <option value="">-- 選択してください --</option>
               {mockUsers.map((user) => (
                 <option key={user.id} value={user.id}>{user.name}</option>
               ))}
@@ -166,9 +188,25 @@ export default function NewDealPage() {
             {errors.assigned_to && <p className="text-red-500 text-xs mt-1">{errors.assigned_to}</p>}
           </div>
 
+          {/* 結果ステータス */}
+          <div>
+            <label className={labelClass}>結果ステータス</label>
+            <select
+              name="result_status"
+              value={formData.result_status}
+              onChange={handleChange}
+              className={inputClass('result_status')}
+            >
+              <option value="">-- 未選択 --</option>
+              {resultStatuses.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+
           {/* 商談日 */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
+            <label className={labelClass}>
               商談日 <span className="text-red-500">*</span>
             </label>
             <input
@@ -180,13 +218,27 @@ export default function NewDealPage() {
             />
             {errors.deal_date && <p className="text-red-500 text-xs mt-1">{errors.deal_date}</p>}
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {/* 流入経路 */}
+          {/* 見込み顧客 */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              流入経路 <span className="text-red-500">*</span>
+            <label className={labelClass}>見込み顧客</label>
+            <select
+              name="prospect_level"
+              value={formData.prospect_level}
+              onChange={handleChange}
+              className={inputClass('prospect_level')}
+            >
+              <option value="">-- 未選択 --</option>
+              {prospectLevels.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* 流入経路（エルステ経由） */}
+          <div>
+            <label className={labelClass}>
+              流入経路（エルステ経由） <span className="text-red-500">*</span>
             </label>
             <select
               name="source"
@@ -194,7 +246,7 @@ export default function NewDealPage() {
               onChange={handleChange}
               className={inputClass('source')}
             >
-              <option value="">-- 選択 --</option>
+              <option value="">-- 選択してください --</option>
               {mockSources.map((s) => (
                 <option key={s.code} value={s.code}>{s.name}</option>
               ))}
@@ -202,56 +254,105 @@ export default function NewDealPage() {
             {errors.source && <p className="text-red-500 text-xs mt-1">{errors.source}</p>}
           </div>
 
-          {/* 代理店 */}
+          {/* 紹介者（代理店経由） */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">代理店</label>
-            <select
-              name="agency_code"
-              value={formData.agency_code}
+            <label className={labelClass}>紹介者（代理店経由）</label>
+            <input
+              type="text"
+              name="referrer"
+              value={formData.referrer}
               onChange={handleChange}
-              className={inputClass('agency_code')}
+              placeholder="例: 代理店A"
+              className={inputClass('referrer')}
+            />
+          </div>
+
+          {/* 退職予定日 */}
+          <div>
+            <label className={labelClass}>
+              退職予定日 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              name="retirement_date"
+              value={formData.retirement_date}
+              onChange={handleChange}
+              className={inputClass('retirement_date')}
+            />
+            {errors.retirement_date && <p className="text-red-500 text-xs mt-1">{errors.retirement_date}</p>}
+          </div>
+
+          {/* 代理店新旧 */}
+          <div>
+            <label className={labelClass}>代理店新旧</label>
+            <select
+              name="agency_type"
+              value={formData.agency_type}
+              onChange={handleChange}
+              className={inputClass('agency_type')}
             >
-              <option value="">-- なし --</option>
-              {mockAgencies.map((a) => (
-                <option key={a.code} value={a.code}>{a.name}</option>
+              <option value="">-- 未選択 --</option>
+              {agencyTypes.map((a) => (
+                <option key={a} value={a}>{a}</option>
               ))}
             </select>
           </div>
         </div>
+      </div>
 
-        {/* 退職予定日 */}
+      {/* 下段：商談内容・次回アクション・備考欄 */}
+      <div className="bg-white rounded-xl shadow-sm p-6 space-y-5">
+        {/* 商談内容（メモ） */}
         <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">
-            退職予定日 <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="retirement_date"
-            value={formData.retirement_date}
-            onChange={handleChange}
-            placeholder="例：2026-06-30 ／ 2026年6月末 ／ 未定"
-            className={inputClass('retirement_date')}
-          />
-          <p className="text-xs text-gray-400 mt-1">日付未確定の場合は「未定」など自由記入可</p>
-          {errors.retirement_date && <p className="text-red-500 text-xs mt-1">{errors.retirement_date}</p>}
-        </div>
-
-        {/* メモ */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">メモ</label>
+          <label className={labelClass}>商談内容（メモ）</label>
           <textarea
             name="memo"
             value={formData.memo}
             onChange={handleChange}
-            placeholder="商談の概要・補足など"
-            rows={3}
+            placeholder="商談で話した内容や次回対応内容のメモ"
+            rows={5}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
-        <p className="text-xs text-gray-400 pt-2 border-t border-gray-100">
-          ※ 面談ステータス・結果（成約 / 検討 / 対象外 / 失注）・人材提案は、登録後の商談詳細画面から入力します。
-        </p>
+        {/* 2カラム：次回アクション日・レコURL */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <label className={labelClass}>次回アクション日</label>
+            <input
+              type="date"
+              name="next_action_date"
+              value={formData.next_action_date}
+              onChange={handleChange}
+              className={inputClass('next_action_date')}
+            />
+          </div>
+
+          <div>
+            <label className={labelClass}>レコ（動画）URL</label>
+            <input
+              type="url"
+              name="recording_url"
+              value={formData.recording_url}
+              onChange={handleChange}
+              placeholder="https://..."
+              className={inputClass('recording_url')}
+            />
+          </div>
+        </div>
+
+        {/* 備考欄 */}
+        <div>
+          <label className={labelClass}>備考欄</label>
+          <textarea
+            name="remarks"
+            value={formData.remarks}
+            onChange={handleChange}
+            placeholder="その他補足事項"
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
       </div>
 
       {/* キャンセル確認 */}

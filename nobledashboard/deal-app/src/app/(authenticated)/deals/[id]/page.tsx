@@ -79,7 +79,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setTimeout(() => setShowSuccess(false), 2500);
   };
 
-  // ── 結果を保存（INTERVIEWED → 成約/検討/対象外/失注）
+  // ── 結果を保存（INTERVIEWED / CONSIDERING → 成約/検討/対象外/失注）
   const handleSaveResult = () => {
     if (!resultStatus) {
       setResultError('結果ステータスを選択してください');
@@ -244,11 +244,17 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         </div>
       )}
 
-      {/* ── STEP 2: 結果入力（INTERVIEWED のとき） ── */}
-      {dealStatus === 'INTERVIEWED' && (
+      {/* ── STEP 2: 結果入力（INTERVIEWED / CONSIDERING のとき） ── */}
+      {(dealStatus === 'INTERVIEWED' || dealStatus === 'CONSIDERING') && (
         <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
-          <h2 className="text-base font-bold text-gray-900 mb-1">面談結果を入力する</h2>
-          <p className="text-xs text-gray-500 mb-5">成約・検討・対象外・失注のいずれかを選択してください。</p>
+          <h2 className="text-base font-bold text-gray-900 mb-1">
+            {dealStatus === 'CONSIDERING' ? 'ステータスを変更する' : '面談結果を入力する'}
+          </h2>
+          <p className="text-xs text-gray-500 mb-5">
+            {dealStatus === 'CONSIDERING'
+              ? '成約・対象外・失注のいずれかに変更できます。'
+              : '成約・検討・対象外・失注のいずれかを選択してください。'}
+          </p>
 
           <div className="space-y-5">
             {/* 結果ステータス */}
@@ -262,7 +268,10 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 className={resultError ? selectErrorClass : selectClass}
               >
                 <option value="">-- 選択してください --</option>
-                {resultStatuses.map((s) => (
+                {(dealStatus === 'CONSIDERING'
+                  ? resultStatuses.filter((s) => s !== '検討')
+                  : resultStatuses
+                ).map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
