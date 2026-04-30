@@ -4,10 +4,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   mockDeals,
-  contractPlanOptions,
   paymentPlanOptions,
   paymentMethodOptions,
 } from '@/lib/mock-data';
+import { useMasterData } from '@/lib/useMasterData';
 
 interface ContractDetailPageProps {
   params: {
@@ -16,6 +16,7 @@ interface ContractDetailPageProps {
 }
 
 export default function ContractDetailPage({ params }: ContractDetailPageProps) {
+  const { plans } = useMasterData();
   const router = useRouter();
   const deal = mockDeals.find((d) => d.id === params.id);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -132,9 +133,9 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
               className={selectClass}
             >
               <option value="">-- 選択してください --</option>
-              {contractPlanOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
+              {plans.map((p) => (
+                <option key={p.code} value={p.name}>
+                  {p.name}
                 </option>
               ))}
             </select>

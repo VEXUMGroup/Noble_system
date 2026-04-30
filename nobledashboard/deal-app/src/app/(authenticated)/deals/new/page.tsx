@@ -4,24 +4,11 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   mockDeals,
-  mockUsers,
-  mockSources,
-  resultStatuses,
   prospectLevels,
   agencyTypes,
   type Deal,
 } from '@/lib/mock-data';
-
-// 流入経路（エルステ経由）オプション
-const FORM_SOURCES = [
-  { code: 'WEB',      name: 'WEB' },
-  { code: 'REF',      name: '紹介' },
-  { code: 'PHONE',    name: '電話' },
-  { code: 'LINE',     name: 'LINE' },
-  { code: 'WEB_META', name: 'WEBシーズ_Meta' },
-  { code: 'GOOGLE',   name: 'Googleリスティング' },
-  { code: 'TIKTOK',   name: 'TikTok' },
-];
+import { useMasterData } from '@/lib/useMasterData';
 
 interface FormData {
   customer_name: string;
@@ -41,6 +28,8 @@ interface FormData {
 
 export default function NewDealPage() {
   const router = useRouter();
+  const { users, sources, statuses } = useMasterData();
+  const resultStatuses = statuses.filter(s => s.code.startsWith('RS_'));
   const [formData, setFormData] = useState<FormData>({
     customer_name: '',
     assigned_to: '',
@@ -199,7 +188,7 @@ export default function NewDealPage() {
               className={selectCls('assigned_to')}
             >
               <option value="">-- 選択してください --</option>
-              {mockUsers.map((user) => (
+              {users.map((user) => (
                 <option key={user.id} value={user.id}>{user.name}</option>
               ))}
             </select>
@@ -217,7 +206,7 @@ export default function NewDealPage() {
             >
               <option value="">-- 未選択 --</option>
               {resultStatuses.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s.code} value={s.name}>{s.name}</option>
               ))}
             </select>
           </div>
@@ -265,7 +254,7 @@ export default function NewDealPage() {
               className={selectCls('source')}
             >
               <option value="">-- 選択してください --</option>
-              {mockSources.map((s) => (
+              {sources.map((s) => (
                 <option key={s.code} value={s.code}>{s.name}</option>
               ))}
             </select>

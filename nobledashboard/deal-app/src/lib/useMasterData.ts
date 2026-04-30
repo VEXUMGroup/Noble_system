@@ -6,10 +6,12 @@ import {
   type MSource,
   type MPlan,
   type MAgency,
+  type MStatus,
   getSources,
   getPlans,
   getAgencies,
   getUsers,
+  getStatuses,
 } from './supabase';
 
 /**
@@ -26,23 +28,26 @@ export function useMasterData() {
   const [plans, setPlans] = useState<MPlan[]>([]);
   const [agencies, setAgencies] = useState<MAgency[]>([]);
   const [users, setUsers] = useState<MUser[]>([]);
+  const [statuses, setStatuses] = useState<MStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [s, p, a, u] = await Promise.all([
+        const [s, p, a, u, st] = await Promise.all([
           getSources(true),
           getPlans(true),
           getAgencies(true),
           getUsers(true),
+          getStatuses(true),
         ]);
         if (cancelled) return;
         setSources(s);
         setPlans(p);
         setAgencies(a);
         setUsers(u);
+        setStatuses(st);
       } catch (e) {
         console.error('useMasterData load error:', e);
       } finally {
@@ -54,5 +59,5 @@ export function useMasterData() {
     };
   }, []);
 
-  return { sources, plans, agencies, users, isLoading };
+  return { sources, plans, agencies, users, statuses, isLoading };
 }

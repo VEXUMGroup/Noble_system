@@ -9,17 +9,26 @@ import {
   mockUsers,
   mockSources,
   mockAgencies,
-  getUserName,
-  getSourceName,
-  getAgencyName,
   formatDate,
   getDaysUntil,
   type Deal,
 } from '@/lib/mock-data';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useMasterData } from '@/lib/useMasterData';
 
 export default function DealsPage() {
   const router = useRouter();
+  const { users, sources, agencies, isLoading: masterLoading } = useMasterData();
+  const displayUsers = masterLoading ? mockUsers : users;
+  const displaySources = masterLoading ? mockSources : sources;
+  const displayAgencies = masterLoading ? mockAgencies : agencies;
+
+  const getUserName = (userId: string) =>
+    displayUsers.find((u) => u.id === userId)?.name ?? userId ?? '-';
+  const getSourceName = (code?: string) =>
+    displaySources.find((s) => s.code === code)?.name ?? code ?? '-';
+  const getAgencyName = (code?: string) =>
+    displayAgencies.find((a) => a.code === code)?.name ?? code ?? '-';
 
   // Filter states
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -109,7 +118,7 @@ export default function DealsPage() {
               className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">すべて</option>
-              {mockUsers.map((user) => (
+              {displayUsers.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.name}
                 </option>
@@ -148,7 +157,7 @@ export default function DealsPage() {
               className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">すべて</option>
-              {mockAgencies.map((agency) => (
+              {displayAgencies.map((agency) => (
                 <option key={agency.code} value={agency.code}>
                   {agency.name}
                 </option>
@@ -165,7 +174,7 @@ export default function DealsPage() {
               className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">すべて</option>
-              {mockSources.map((source) => (
+              {displaySources.map((source) => (
                 <option key={source.code} value={source.code}>
                   {source.name}
                 </option>

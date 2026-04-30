@@ -1,12 +1,18 @@
-import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createSupabaseBrowserClient } from './supabase/client';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  '';
+let browserClient: SupabaseClient | null = null;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+function getSupabaseBrowserClient() {
+  // Master data / deals 読み込みはクライアント側で動かす前提。
+  // `@supabase/ssr` の browser client は Cookie のセッションを読めるため、
+  // Server-side auth（Cookie）と整合する。
+  if (typeof window === 'undefined') {
+    throw new Error('supabase client is not available on the server (use server client instead)');
+  }
+  if (!browserClient) browserClient = createSupabaseBrowserClient();
+  return browserClient;
+}
 
 export interface DealFilters {
   status?: string;
@@ -15,6 +21,7 @@ export interface DealFilters {
 
 export async function getDeals(filters?: DealFilters) {
   try {
+    const supabase = getSupabaseBrowserClient();
     let query = supabase.from('deals').select('*');
     if (filters?.status) {
       query = query.eq('status', filters.status);
@@ -38,6 +45,7 @@ export async function getDeals(filters?: DealFilters) {
 
 export async function getDeal(id: string) {
   try {
+    const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase
       .from('deals')
       .select('*')
@@ -82,11 +90,19 @@ export interface MAgency {
   is_active: boolean;
 }
 
+export interface MStatus {
+  code: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
 export async function getUsers(onlyActive = true) {
   try {
-    let query = supabase.from('master_users').select('*');
+    const supabase = getSupabaseBrowserClient();
+    let query = supabase.from('m_users').select('*');
     if (onlyActive) query = query.eq('is_active', true);
-    const { data, error } = await query;
+    const { data, error } = await query.order('name');
     if (error) {
       console.error('Error fetching users:', error);
       return [];
@@ -100,9 +116,10 @@ export async function getUsers(onlyActive = true) {
 
 export async function getSources(onlyActive = true) {
   try {
-    let query = supabase.from('master_sources').select('*');
+    const supabase = getSupabaseBrowserClient();
+    let query = supabase.from('m_sources').select('*');
     if (onlyActive) query = query.eq('is_active', true);
-    const { data, error } = await query;
+    const { data, error } = await query.order('name');
     if (error) {
       console.error('Error fetching sources:', error);
       return [];
@@ -116,9 +133,10 @@ export async function getSources(onlyActive = true) {
 
 export async function getPlans(onlyActive = true) {
   try {
-    let query = supabase.from('master_plans').select('*');
+    const supabase = getSupabaseBrowserClient();
+    let query = supabase.from('m_plans').select('*');
     if (onlyActive) query = query.eq('is_active', true);
-    const { data, error } = await query;
+    const { data, error } = await query.order('name');
     if (error) {
       console.error('Error fetching plans:', error);
       return [];
@@ -132,9 +150,10 @@ export async function getPlans(onlyActive = true) {
 
 export async function getAgencies(onlyActive = true) {
   try {
-    let query = supabase.from('master_agencies').select('*');
+    const supabase = getSupabaseBrowserClient();
+    let query = supabase.from('m_agencies').select('*');
     if (onlyActive) query = query.eq('is_active', true);
-    const { data, error } = await query;
+    const { data, error } = await query.order('name');
     if (error) {
       console.error('Error fetching agencies:', error);
       return [];
@@ -142,6 +161,23 @@ export async function getAgencies(onlyActive = true) {
     return (data || []) as MAgency[];
   } catch (error) {
     console.error('Error in getAgencies:', error);
+    return [];
+  }
+}
+
+export async function getStatuses(onlyActive = true) {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    let query = supabase.from('m_statuses').select('*');
+    if (onlyActive) query = query.eq('is_active', true);
+    const { data, error } = await query.order('sort_order');
+    if (error) {
+      console.error('Error fetching statuses:', error);
+      return [];
+    }
+    return (data || []) as MStatus[];
+  } catch (error) {
+    console.error('Error in getStatuses:', error);
     return [];
   }
 }

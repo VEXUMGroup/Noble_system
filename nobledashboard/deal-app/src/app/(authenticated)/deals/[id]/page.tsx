@@ -7,21 +7,14 @@ import { RESULT_STATUS_TO_DEAL_STATUS } from '@/lib/types';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import {
   mockDeals,
-  mockUsers,
-  mockSources,
-  mockAgencies,
   formatDate,
-  getAgencyName,
-  getSourceName,
-  getUserName,
-  interviewStatuses,
-  resultStatuses,
   consideringReasons,
   outOfScopeReasons,
   lostReasons,
   hrProposalOptions,
   hrFeasibilityOptions,
 } from '@/lib/mock-data';
+import { useMasterData } from '@/lib/useMasterData';
 
 interface DealDetailPageProps {
   params: { id: string };
@@ -29,6 +22,9 @@ interface DealDetailPageProps {
 
 export default function DealDetailPage({ params }: DealDetailPageProps) {
   const router = useRouter();
+  const { users, sources, agencies, statuses } = useMasterData();
+  const interviewStatuses = statuses.filter(s => s.code.startsWith('ST_')).map(s => s.name);
+  const resultStatuses = statuses.filter(s => s.code.startsWith('RS_')).map(s => s.name);
   const deal = mockDeals.find((item) => item.id === params.id);
 
   // ローカルでステータスを管理（モックデータ変更をUIに即反映するため）
@@ -224,7 +220,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 <label className="block text-xs font-semibold text-gray-500 mb-1">担当者</label>
                 <select value={editAssignedTo} onChange={(e) => setEditAssignedTo(e.target.value)} className={inputClass}>
                   <option value="">-- 未選択 --</option>
-                  {mockUsers.map((u) => (
+                  {users.map((u) => (
                     <option key={u.id} value={u.id}>{u.name}</option>
                   ))}
                 </select>
@@ -241,7 +237,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 <label className="block text-xs font-semibold text-gray-500 mb-1">流入経路</label>
                 <select value={editSourceCode} onChange={(e) => setEditSourceCode(e.target.value)} className={inputClass}>
                   <option value="">-- 未選択 --</option>
-                  {mockSources.map((s) => (
+                  {sources.map((s) => (
                     <option key={s.code} value={s.code}>{s.name}</option>
                   ))}
                 </select>
@@ -250,7 +246,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 <label className="block text-xs font-semibold text-gray-500 mb-1">代理店</label>
                 <select value={editAgencyCode} onChange={(e) => setEditAgencyCode(e.target.value)} className={inputClass}>
                   <option value="">-- なし --</option>
-                  {mockAgencies.map((a) => (
+                  {agencies.map((a) => (
                     <option key={a.code} value={a.code}>{a.name}</option>
                   ))}
                 </select>
@@ -280,11 +276,11 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
           /* ── 表示モード ── */
           <dl className="divide-y divide-gray-100">
             {[
-              ['担当者', getUserName(deal.assigned_to)],
+              ['担当者', users.find(u => u.id === deal.assigned_to)?.name ?? deal.assigned_to ?? '-'],
               ['商談日', formatDate(deal.deal_date)],
               ['退職予定日', deal.retirement_date],
-              ['流入経路', getSourceName(deal.source_code || deal.source)],
-              ['代理店', getAgencyName(deal.agency_code)],
+              ['流入経路', sources.find(s => s.code === (deal.source_code || deal.source))?.name ?? deal.source ?? '-'],
+              ['代理店', agencies.find(a => a.code === deal.agency_code)?.name ?? deal.agency_code ?? '-'],
               ['メモ', deal.memo || '-'],
             ].map(([label, value]) => (
               <div key={label} className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">

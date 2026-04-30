@@ -1,398 +1,492 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import {
-  mockUsers,
-  mockPlans,
-  mockSources,
-  mockAgencies,
-  formatCurrency,
-  type User,
-  type Plan,
-  type Source,
-  type Agency,
-} from '@/lib/mock-data';
+  fetchMasterData,
+  addMasterData,
+  updateMasterData,
+  softDeleteMasterData,
+  isMasterAdmin,
+  type MasterTableName,
+} from '@/lib/supabase-master';
 
-type TabType = 'sources' | 'plans' | 'agencies' | 'users';
+const supabase = createSupabaseBrowserClient();
 
-const roleLabels: Record<User['role'], string> = {
-  sales: '営業',
-  admin_staff: '事務',
-  manager: '管理者',
+// ─────────────────────────────────────────────
+// 型定義
+// ─────────────────────────────────────────────
+type TabType = MasterTableName;
+
+interface ColumnDef {
+  key: string;
+  label: string;
+  type: 'text' | 'email' | 'number' | 'select' | 'checkbox';
+  options?: { value: string; label: string }[];
+  required?: boolean;
+  displayWidth?: string;
+}
+
+// ─────────────────────────────────────────────
+// マスタ定義
+// ─────────────────────────────────────────────
+const ROLE_OPTIONS = [
+  { value: 'sales', label: '営業' },
+  { value: 'admin_staff', label: '事務' },
+  { value: 'manager', label: '管理者' },
+];
+
+const CATEGORY_OPTIONS = [
+  { value: 'interview', label: '商談ステータス' },
+  { value: 'result', label: '結果ステータス' },
+  { value: 'contract_confirm', label: '契約確認' },
+  { value: 'contract', label: '契約' },
+  { value: 'support', label: 'サポート' },
+  { value: 'payment', label: '支払い' },
+];
+
+const TABLE_COLUMNS: Record<TabType, ColumnDef[]> = {
+  m_users: [
+    { key: 'id',        label: 'ID',     type: 'text',     required: true },
+    { key: 'name',      label: '名前',   type: 'text',     required: true },
+    { key: 'email',     label: 'メール', type: 'email',    required: true },
+    { key: 'role',      label: 'ロール', type: 'select',   options: ROLE_OPTIONS, required: true },
+    { key: 'is_active', label: '有効',   type: 'checkbox' },
+  ],
+  m_sources: [
+    { key: 'code',      label: 'コード', type: 'text', required: true },
+    { key: 'name',      label: '名称',   type: 'text', required: true },
+    { key: 'is_active', label: '有効',   type: 'checkbox' },
+  ],
+  m_statuses: [
+    { key: 'code',       label: 'コード',     type: 'text',   required: true },
+    { key: 'name',       label: '名称',       type: 'text',   required: true },
+    { key: 'category',   label: 'カテゴリ',   type: 'select', options: CATEGORY_OPTIONS },
+    { key: 'sort_order', label: '表示順',     type: 'number', required: true },
+    { key: 'is_active',  label: '有効',       type: 'checkbox' },
+  ],
+  m_plans: [
+    { key: 'code',        label: 'コード', type: 'text',   required: true },
+    { key: 'name',        label: '名称',   type: 'text',   required: true },
+    { key: 'description', label: '説明',   type: 'text' },
+    { key: 'price',       label: '価格',   type: 'number', required: true },
+    { key: 'is_active',   label: '有効',   type: 'checkbox' },
+  ],
+  m_agencies: [
+    { key: 'code',            label: 'コード',   type: 'text',   required: true },
+    { key: 'name',            label: '名称',     type: 'text',   required: true },
+    { key: 'contact',         label: '連絡先',   type: 'text' },
+    { key: 'commission_rate', label: '手数料率', type: 'number' },
+    { key: 'is_active',       label: '有効',     type: 'checkbox' },
+  ],
 };
 
+const TABLE_PRIMARY_KEY: Record<TabType, string> = {
+  m_users: 'id',
+  m_sources: 'code',
+  m_statuses: 'code',
+  m_plans: 'code',
+  m_agencies: 'code',
+};
+
+const TAB_LABELS: Record<TabType, string> = {
+  m_users: '担当者',
+  m_sources: '流入経路',
+  m_statuses: 'ステータス',
+  m_plans: 'プラン',
+  m_agencies: '代理店',
+};
+
+// ─────────────────────────────────────────────
+// セル表示ヘルパー
+// ─────────────────────────────────────────────
+function renderCell(col: ColumnDef, value: unknown): string {
+  if (value === null || value === undefined) return '-';
+  if (col.type === 'checkbox') return value ? '✓' : '✗';
+  if (col.type === 'select') {
+    return col.options?.find((o) => o.value === String(value))?.label ?? String(value);
+  }
+  if (col.key === 'commission_rate') return `${(Number(value) * 100).toFixed(0)}%`;
+  return String(value);
+}
+
+// ─────────────────────────────────────────────
+// メインページ
+// ─────────────────────────────────────────────
 export default function MasterPage() {
-  const [activeTab, setActiveTab] = useState<TabType>('sources');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [formData, setFormData] = useState({
-    code: '',
-    name: '',
-    price: '',
-    contact: '',
-    email: '',
-    role: 'sales' as User['role'],
-  });
-  const [sources, setSources] = useState([...mockSources]);
-  const [plans, setPlans] = useState([...mockPlans]);
-  const [agencies, setAgencies] = useState([...mockAgencies]);
-  const [users, setUsers] = useState([...mockUsers]);
-  const [errorMessage, setErrorMessage] = useState('');
+  const router = useRouter();
 
-  const handleAddClick = () => {
-    setFormData({ code: '', name: '', price: '', contact: '', email: '', role: 'sales' });
-    setErrorMessage('');
-    setShowAddModal(true);
-  };
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  const handleCloseModal = () => {
-    setErrorMessage('');
-    setShowAddModal(false);
-  };
+  const [activeTab, setActiveTab] = useState<TabType>('m_users');
+  const [tableData, setTableData] = useState<Record<string, unknown>[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [pageError, setPageError] = useState('');
 
-  const handleSave = () => {
-    if (activeTab === 'users') {
-      if (!formData.name.trim() || !formData.email.trim()) {
-        setErrorMessage('名前とメールアドレスは必須です。');
+  // モーダル
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editItem, setEditItem] = useState<Record<string, unknown> | null>(null);
+  const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // 削除確認
+  const [deleteKey, setDeleteKey] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // ── 認証チェック ──
+  useEffect(() => {
+    (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const user = auth.user;
+      if (!user) {
+        router.push('/');
         return;
       }
-      const newId = `u${String(mockUsers.length + 1).padStart(3, '0')}`;
-      const nextUser: User = {
-        id: newId,
-        name: formData.name.trim(),
-        email: formData.email.trim(),
-        role: formData.role,
-      };
-      mockUsers.push(nextUser);
-      setUsers([...mockUsers]);
-    } else {
-      if (!formData.code.trim() || !formData.name.trim()) {
-        setErrorMessage('コードと名称は必須です。');
-        return;
-      }
+      const ok = await isMasterAdmin(user.email ?? '');
+      setIsAdmin(ok);
+      setAuthChecked(true);
+      if (!ok) router.push('/dashboard');
+    })();
+  }, [router]);
 
-      if (activeTab === 'plans') {
-        const price = Number(formData.price);
-        if (Number.isNaN(price) || price <= 0) {
-          setErrorMessage('価格は正しい数値を入力してください。');
-          return;
-        }
-        const nextPlan: Plan = {
-          code: formData.code.trim(),
-          name: formData.name.trim(),
-          description: `${formData.name.trim()}の追加プラン`,
-          price,
-        };
-        mockPlans.push(nextPlan);
-        setPlans([...mockPlans]);
-      } else if (activeTab === 'agencies') {
-        const nextAgency: Agency = {
-          code: formData.code.trim(),
-          name: formData.name.trim(),
-          contact: formData.contact.trim() || undefined,
-        };
-        mockAgencies.push(nextAgency);
-        setAgencies([...mockAgencies]);
-      } else {
-        const nextSource: Source = {
-          code: formData.code.trim(),
-          name: formData.name.trim(),
-        };
-        mockSources.push(nextSource);
-        setSources([...mockSources]);
+  // ── データ取得 ──
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setPageError('');
+    try {
+      const data = await fetchMasterData(activeTab);
+      setTableData(data);
+    } catch (e) {
+      setPageError(e instanceof Error ? e.message : 'データ取得に失敗しました');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (authChecked) loadData();
+  }, [activeTab, authChecked, loadData]);
+
+  // ── 追加モーダルを開く ──
+  const openAddModal = () => {
+    const defaults: Record<string, unknown> = { is_active: true };
+    if (activeTab === 'm_statuses') defaults.sort_order = 0;
+    if (activeTab === 'm_plans') defaults.price = 0;
+    if (activeTab === 'm_agencies') defaults.commission_rate = 0.25;
+    setEditItem(null);
+    setFormData(defaults);
+    setFormError('');
+    setModalOpen(true);
+  };
+
+  // ── 編集モーダルを開く ──
+  const openEditModal = (item: Record<string, unknown>) => {
+    if (!isAdmin) return;
+    setEditItem(item);
+    setFormData({ ...item });
+    setFormError('');
+    setModalOpen(true);
+  };
+
+  // ── 保存 ──
+  const handleSave = async () => {
+    const cols = TABLE_COLUMNS[activeTab];
+    for (const col of cols) {
+      if (col.required && !formData[col.key] && formData[col.key] !== 0) {
+        setFormError(`「${col.label}」は必須です`);
+        return;
       }
     }
-
-    setErrorMessage('');
-    setShowAddModal(false);
+    setSaving(true);
+    setFormError('');
+    try {
+      const pkField = TABLE_PRIMARY_KEY[activeTab];
+      if (editItem) {
+        await updateMasterData(activeTab, editItem[pkField] as string, formData);
+      } else {
+        await addMasterData(activeTab, formData);
+      }
+      setModalOpen(false);
+      await loadData();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : '保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleFormChange = (field: string, value: string) => {
-    setErrorMessage('');
-    setFormData(prev => ({ ...prev, [field]: value }));
+  // ── 論理削除 ──
+  const handleDelete = async () => {
+    if (!deleteKey) return;
+    setDeleting(true);
+    try {
+      await softDeleteMasterData(activeTab, deleteKey);
+      setDeleteKey(null);
+      await loadData();
+    } catch (e) {
+      setPageError(e instanceof Error ? e.message : '削除に失敗しました');
+    } finally {
+      setDeleting(false);
+    }
   };
 
-  const tabClass = (tab: TabType) =>
-    `px-4 sm:px-6 py-2 rounded-full font-medium text-sm transition ${
-      activeTab === tab
-        ? 'bg-blue-600 text-white'
-        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-    }`;
+  // ── 認証確認中 ──
+  if (!authChecked) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-400 text-sm">認証確認中...</p>
+      </div>
+    );
+  }
 
-  const inputClass =
-    'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const cols = TABLE_COLUMNS[activeTab];
+  const pkField = TABLE_PRIMARY_KEY[activeTab];
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* ヘッダー */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">マスタ管理</h1>
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">マスタ管理</h1>
+          {!isAdmin && (
+            <p className="text-xs text-amber-600 mt-1">
+              ※ 権限がありません
+            </p>
+          )}
+        </div>
+        {isAdmin && (
+          <button
+            onClick={openAddModal}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition"
+          >
+            + 追加
+          </button>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-2 sm:gap-3">
-        <button onClick={() => setActiveTab('sources')} className={tabClass('sources')}>
-          流入経路
-        </button>
-        <button onClick={() => setActiveTab('plans')} className={tabClass('plans')}>
-          成約プラン
-        </button>
-        <button onClick={() => setActiveTab('agencies')} className={tabClass('agencies')}>
-          代理店
-        </button>
-        <button onClick={() => setActiveTab('users')} className={tabClass('users')}>
-          担当者
-        </button>
+      {/* タブ */}
+      <div className="flex flex-wrap gap-2">
+        {(Object.keys(TAB_LABELS) as TabType[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+              activeTab === tab
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            {TAB_LABELS[tab]}
+          </button>
+        ))}
       </div>
 
-      {/* Content */}
-      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
+      {/* エラー */}
+      {pageError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+          {pageError}
+        </div>
+      )}
 
-        {/* Tab: Sources */}
-        {activeTab === 'sources' && (
-          <div className="space-y-4">
-            <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
-              + 追加
-            </button>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">コード</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名称</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {sources.map((source) => (
-                    <tr key={source.code} className="hover:bg-gray-50">
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{source.code}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{source.name}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      {/* テーブル */}
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-40">
+            <p className="text-gray-400 text-sm">読み込み中...</p>
           </div>
-        )}
-
-        {/* Tab: Plans */}
-        {activeTab === 'plans' && (
-          <div className="space-y-4">
-            <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
-              + 追加
-            </button>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">コード</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名称</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">価格</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {plans.map((plan) => (
-                    <tr key={plan.code} className="hover:bg-gray-50">
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{plan.code}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{plan.name}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{formatCurrency(plan.price)}</td>
-                    </tr>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  {cols.map((col) => (
+                    <th
+                      key={col.key}
+                      className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap"
+                    >
+                      {col.label}
+                    </th>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Tab: Agencies */}
-        {activeTab === 'agencies' && (
-          <div className="space-y-4">
-            <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
-              + 追加
-            </button>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                  {isAdmin && (
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      操作
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {tableData.length === 0 ? (
                   <tr>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">コード</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名称</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">連絡先</th>
+                    <td
+                      colSpan={cols.length + (isAdmin ? 1 : 0)}
+                      className="px-4 py-10 text-center text-gray-400 text-sm"
+                    >
+                      データがありません
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {agencies.map((agency) => (
-                    <tr key={agency.code} className="hover:bg-gray-50">
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{agency.code}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{agency.name}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{agency.contact || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Tab: Users (担当者マスタ) */}
-        {activeTab === 'users' && (
-          <div className="space-y-4">
-            <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
-              + 担当者を追加
-            </button>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">ID</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名前</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">メールアドレス</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">ロール</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-500">{user.id}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{user.name}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{user.email}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm">
-                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                          user.role === 'manager'
-                            ? 'bg-purple-100 text-purple-700'
-                            : user.role === 'sales'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {roleLabels[user.role]}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ) : (
+                  tableData.map((row) => {
+                    const pk = String(row[pkField]);
+                    const isActive = row.is_active !== false;
+                    return (
+                      <tr
+                        key={pk}
+                        onClick={() => isAdmin && openEditModal(row)}
+                        className={`hover:bg-blue-50 transition ${
+                          isAdmin ? 'cursor-pointer' : ''
+                        } ${!isActive ? 'opacity-40' : ''}`}
+                      >
+                        {cols.map((col) => (
+                          <td
+                            key={col.key}
+                            className="px-4 py-3 text-gray-800 whitespace-nowrap max-w-xs truncate"
+                          >
+                            {renderCell(col, row[col.key])}
+                          </td>
+                        ))}
+                        {isAdmin && (
+                          <td
+                            className="px-4 py-3 whitespace-nowrap"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {isActive && (
+                              <button
+                                onClick={() => setDeleteKey(pk)}
+                                className="text-red-500 hover:text-red-700 text-xs font-medium px-2 py-1 rounded hover:bg-red-50 transition"
+                              >
+                                無効化
+                              </button>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      {/* Add Modal */}
-      {showAddModal && (
+      {/* 追加 / 編集モーダル */}
+      {modalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-sm">
-            <h2 className="text-lg font-bold mb-4">
-              {activeTab === 'users' ? '担当者を追加' : '項目を追加'}
+          <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl">
+            <h2 className="text-lg font-bold mb-4 text-gray-900">
+              {editItem ? '編集' : '追加'} — {TAB_LABELS[activeTab]}
             </h2>
-            {errorMessage && (
+            {formError && (
               <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                {errorMessage}
+                {formError}
               </div>
             )}
             <div className="space-y-4">
-              {/* 担当者タブのフォーム */}
-              {activeTab === 'users' ? (
-                <>
-                  <div>
+              {cols.map((col) => {
+                const isReadonly = editItem !== null && col.key === pkField;
+                const val = formData[col.key];
+                return (
+                  <div key={col.key}>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      名前 <span className="text-red-500">*</span>
+                      {col.label}
+                      {col.required && <span className="text-red-500 ml-0.5">*</span>}
                     </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => handleFormChange('name', e.target.value)}
-                      className={inputClass}
-                      placeholder="例：田中 太郎"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      メールアドレス <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => handleFormChange('email', e.target.value)}
-                      className={inputClass}
-                      placeholder="例：tanaka@example.com"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ロール</label>
-                    <select
-                      value={formData.role}
-                      onChange={(e) => handleFormChange('role', e.target.value)}
-                      className={inputClass}
-                    >
-                      <option value="sales">営業</option>
-                      <option value="admin_staff">事務</option>
-                      <option value="manager">管理者</option>
-                    </select>
-                  </div>
-                </>
-              ) : (
-                /* その他タブの共通フォーム */
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      コード <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.code}
-                      onChange={(e) => handleFormChange('code', e.target.value)}
-                      className={inputClass}
-                      placeholder="コードを入力"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      名称 <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => handleFormChange('name', e.target.value)}
-                      className={inputClass}
-                      placeholder="名称を入力"
-                    />
-                  </div>
-                  {activeTab === 'plans' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">価格</label>
+
+                    {isReadonly ? (
+                      <p className="px-3 py-2 bg-gray-100 rounded-lg text-sm text-gray-600">
+                        {String(val ?? '')}
+                      </p>
+                    ) : col.type === 'checkbox' ? (
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!val}
+                          onChange={(e) =>
+                            setFormData((prev) => ({ ...prev, [col.key]: e.target.checked }))
+                          }
+                          className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                        />
+                        <span className="text-sm text-gray-700">有効にする</span>
+                      </label>
+                    ) : col.type === 'select' ? (
+                      <select
+                        value={String(val ?? '')}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, [col.key]: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="">-- 選択してください --</option>
+                        {col.options?.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
                       <input
-                        type="number"
-                        value={formData.price}
-                        onChange={(e) => handleFormChange('price', e.target.value)}
-                        className={inputClass}
-                        placeholder="価格を入力"
+                        type={col.type}
+                        value={String(val ?? '')}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            [col.key]:
+                              col.type === 'number' ? Number(e.target.value) : e.target.value,
+                          }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={col.label}
                       />
-                    </div>
-                  )}
-                  {activeTab === 'agencies' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">連絡先</label>
-                      <input
-                        type="text"
-                        value={formData.contact}
-                        onChange={(e) => handleFormChange('contact', e.target.value)}
-                        className={inputClass}
-                        placeholder="連絡先を入力"
-                      />
-                    </div>
-                  )}
-                </>
-              )}
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="flex gap-3 mt-6">
               <button
-                onClick={handleCloseModal}
+                onClick={() => setModalOpen(false)}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium text-sm"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
+                disabled={saving}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm disabled:opacity-50"
               >
-                保存
+                {saving ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 無効化確認ダイアログ */}
+      {deleteKey && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <h2 className="text-lg font-bold mb-2 text-gray-900">無効化の確認</h2>
+            <p className="text-gray-600 text-sm mb-6">
+              以下のレコードを無効化しますか？
+              <br />
+              <span className="font-semibold text-gray-900 mt-1 inline-block">{deleteKey}</span>
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteKey(null)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium text-sm"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-sm disabled:opacity-50"
+              >
+                {deleting ? '処理中...' : '無効化する'}
               </button>
             </div>
           </div>
