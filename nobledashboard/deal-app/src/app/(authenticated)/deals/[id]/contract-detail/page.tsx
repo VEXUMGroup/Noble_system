@@ -115,7 +115,7 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
       )}
 
       {/* Form Card */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
         <form className="space-y-6">
 
           {/* 成約プラン */}

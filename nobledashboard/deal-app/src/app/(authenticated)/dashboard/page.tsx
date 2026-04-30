@@ -170,36 +170,29 @@ export default function DashboardPage() {
       <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">ダッシュボード</h1>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Deals Card */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
-            <div className="text-gray-600 text-sm font-medium mb-2">新規・面談待ち</div>
-            <div className="text-3xl font-bold text-gray-900">{newAndInterviewedDeals}</div>
-            <div className="text-gray-500 text-xs mt-2">件</div>
-          </div>
-
-        {/* Contracted Deals Card */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-green-500">
-          <div className="text-gray-600 text-sm font-medium mb-2">成約案件</div>
-          <div className="text-3xl font-bold text-gray-900">{contractedDeals}</div>
-          <div className="text-gray-500 text-xs mt-2">件</div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-blue-500">
+          <div className="text-gray-600 text-xs sm:text-sm font-medium mb-1 sm:mb-2">新規・面談待ち</div>
+          <div className="text-2xl sm:text-3xl font-bold text-gray-900">{newAndInterviewedDeals}</div>
+          <div className="text-gray-500 text-xs mt-1 sm:mt-2">件</div>
         </div>
-
-        {/* Considering Deals Card */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-orange-500">
-          <div className="text-gray-600 text-sm font-medium mb-2">検討中</div>
-          <div className="text-3xl font-bold text-gray-900">{consideringDeals}</div>
-          <div className="text-gray-500 text-xs mt-2">件</div>
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-green-500">
+          <div className="text-gray-600 text-xs sm:text-sm font-medium mb-1 sm:mb-2">成約案件</div>
+          <div className="text-2xl sm:text-3xl font-bold text-gray-900">{contractedDeals}</div>
+          <div className="text-gray-500 text-xs mt-1 sm:mt-2">件</div>
         </div>
-
-        {/* This Month's Contracted Amount Card */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-500">
-            <div className="text-gray-600 text-sm font-medium mb-2">今月の成約見込額</div>
-            <div className="text-2xl font-bold text-gray-900">{formatCurrency(thisMonthContracted)}</div>
-          </div>
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-orange-500">
+          <div className="text-gray-600 text-xs sm:text-sm font-medium mb-1 sm:mb-2">検討中</div>
+          <div className="text-2xl sm:text-3xl font-bold text-gray-900">{consideringDeals}</div>
+          <div className="text-gray-500 text-xs mt-1 sm:mt-2">件</div>
         </div>
+        <div className="col-span-2 lg:col-span-1 bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-purple-500">
+          <div className="text-gray-600 text-xs sm:text-sm font-medium mb-1 sm:mb-2">今月の成約見込額</div>
+          <div className="text-lg sm:text-2xl font-bold text-gray-900">{formatCurrency(thisMonthContracted)}</div>
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Main Content (2 columns) */}
         <div className="lg:col-span-2 space-y-6">
           {/* Retirement Alert Section */}
@@ -211,10 +204,10 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={deal.id}
-                    className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3"
+                    className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3"
                   >
-                    <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                    <div className="flex-grow">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 hidden sm:block" />
+                    <div className="flex-grow min-w-0">
                       <p className="text-yellow-900 font-medium">{deal.customer_name}</p>
                       <p className="text-yellow-800 text-sm">
                         退職予定日: {formatDate(deal.retirement_date)} ({daysRemaining}日後)
@@ -222,7 +215,7 @@ export default function DashboardPage() {
                     </div>
                     <Link
                       href={`/deals/${deal.id}`}
-                      className="bg-yellow-600 hover:bg-yellow-700 text-white text-sm px-3 py-1 rounded transition flex-shrink-0"
+                      className="block text-center sm:inline sm:text-left bg-yellow-600 hover:bg-yellow-700 text-white text-sm px-3 py-1.5 rounded transition flex-shrink-0"
                     >
                       詳細確認
                     </Link>
@@ -232,7 +225,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Recent Deals Table */}
+          {/* Recent Deals */}
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">最近の商談</h2>
@@ -243,23 +236,37 @@ export default function DashboardPage() {
                 商談一覧を見る
               </Link>
             </div>
-            <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
+
+            {/* モバイル: カード表示 */}
+            <div className="sm:hidden space-y-2">
+              {recentDeals.map((deal) => (
+                <div
+                  key={deal.id}
+                  onClick={() => router.push(`/deals/${deal.id}`)}
+                  className="bg-white rounded-xl shadow-sm p-4 cursor-pointer active:bg-gray-50"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="font-semibold text-gray-900 text-sm">{deal.customer_name}</p>
+                    <StatusBadge status={deal.status} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-500 mt-1">
+                    <span>担当：{getUserName(deal.assigned_to)}</span>
+                    <span>商談日：{formatDate(deal.deal_date)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* デスクトップ: テーブル表示 */}
+            <div className="hidden sm:block bg-white rounded-xl shadow-sm overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">ID</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">
-                      顧客名
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">
-                      担当
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">
-                      ステータス
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">
-                      商談日
-                    </th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">顧客名</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">担当</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">ステータス</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">商談日</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -271,15 +278,9 @@ export default function DashboardPage() {
                     >
                       <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{deal.id}</td>
                       <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-900">{deal.customer_name}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">
-                        {getUserName(deal.assigned_to)}
-                      </td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm">
-                        <StatusBadge status={deal.status} />
-                      </td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">
-                        {formatDate(deal.deal_date)}
-                      </td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{getUserName(deal.assigned_to)}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm"><StatusBadge status={deal.status} /></td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{formatDate(deal.deal_date)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -317,8 +318,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm p-4 sm:p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">直近のタスク</h2>
             <span className="text-sm text-gray-500">{totalDeals}件中</span>

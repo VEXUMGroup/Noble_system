@@ -7,6 +7,9 @@ import { RESULT_STATUS_TO_DEAL_STATUS } from '@/lib/types';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import {
   mockDeals,
+  mockUsers,
+  mockSources,
+  mockAgencies,
   formatDate,
   getAgencyName,
   getSourceName,
@@ -51,6 +54,16 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+
+  // ── 顧客詳細編集フォームの状態
+  const [isEditing, setIsEditing] = useState(false);
+  const [editCustomerName, setEditCustomerName] = useState(deal?.customer_name ?? '');
+  const [editAssignedTo, setEditAssignedTo] = useState(deal?.assigned_to ?? '');
+  const [editDealDate, setEditDealDate] = useState(deal?.deal_date ?? '');
+  const [editRetirementDate, setEditRetirementDate] = useState(deal?.retirement_date ?? '');
+  const [editSourceCode, setEditSourceCode] = useState(deal?.source_code ?? deal?.source ?? '');
+  const [editAgencyCode, setEditAgencyCode] = useState(deal?.agency_code ?? '');
+  const [editMemo, setEditMemo] = useState(deal?.memo ?? '');
 
   if (!deal) {
     return (
@@ -117,8 +130,39 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     }
   };
 
+  // ── 顧客詳細を保存
+  const handleSaveCustomer = () => {
+    if (!editCustomerName.trim()) return;
+    deal.customer_name = editCustomerName.trim();
+    deal.assigned_to = editAssignedTo;
+    deal.deal_date = editDealDate;
+    deal.retirement_date = editRetirementDate;
+    deal.source_code = editSourceCode;
+    deal.source = editSourceCode;
+    deal.agency_code = editAgencyCode;
+    deal.memo = editMemo;
+    deal.updated_at = new Date().toISOString();
+    setIsEditing(false);
+    setSuccessMessage('顧客詳細を保存しました');
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 2500);
+  };
+
+  // ── 編集キャンセル（元の値に戻す）
+  const handleCancelEdit = () => {
+    setEditCustomerName(deal.customer_name);
+    setEditAssignedTo(deal.assigned_to);
+    setEditDealDate(deal.deal_date);
+    setEditRetirementDate(deal.retirement_date);
+    setEditSourceCode(deal.source_code ?? deal.source ?? '');
+    setEditAgencyCode(deal.agency_code ?? '');
+    setEditMemo(deal.memo ?? '');
+    setIsEditing(false);
+  };
+
   const selectClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
   const selectErrorClass = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400';
+  const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
 
   const isContractedOrLater = ['CONTRACTED', 'DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(dealStatus);
   const isDetailEnteredOrLater = ['DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(dealStatus);
@@ -128,7 +172,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">商談詳細</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">商談詳細</h1>
           <p className="text-xs text-gray-400 mt-1">{deal.id}</p>
         </div>
         <Link href="/deals" className="text-sm text-blue-600 hover:text-blue-700">← 商談一覧</Link>
@@ -141,56 +185,141 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       )}
 
       {/* 基本情報 */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
         <div className="flex items-center justify-between gap-4 mb-5">
-          <div>
+          <div className="flex-1">
             <p className="text-xs text-gray-400 mb-1">顧客名</p>
-            <p className="text-xl font-bold text-gray-900">{deal.customer_name}</p>
+            {isEditing ? (
+              <input
+                type="text"
+                value={editCustomerName}
+                onChange={(e) => setEditCustomerName(e.target.value)}
+                className="text-xl font-bold text-gray-900 border border-gray-300 rounded-lg px-3 py-1 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            ) : (
+              <p className="text-xl font-bold text-gray-900">{deal.customer_name}</p>
+            )}
           </div>
-          <StatusBadge status={dealStatus} />
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <StatusBadge status={dealStatus} />
+            {!isEditing && (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                </svg>
+                編集
+              </button>
+            )}
+          </div>
         </div>
 
-        <dl className="divide-y divide-gray-100">
-          {[
-            ['担当者', getUserName(deal.assigned_to)],
-            ['商談日', formatDate(deal.deal_date)],
-            ['退職予定日', deal.retirement_date],
-            ['流入経路', getSourceName(deal.source_code || deal.source)],
-            ['代理店', getAgencyName(deal.agency_code)],
-            ['メモ', deal.memo || '-'],
-          ].map(([label, value]) => (
-            <div key={label} className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
-              <dt className="text-sm font-medium text-gray-500">{label}</dt>
-              <dd className="sm:col-span-2 text-sm text-gray-900">{value}</dd>
+        {isEditing ? (
+          /* ── 編集モード ── */
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">担当者</label>
+                <select value={editAssignedTo} onChange={(e) => setEditAssignedTo(e.target.value)} className={inputClass}>
+                  <option value="">-- 未選択 --</option>
+                  {mockUsers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">商談日</label>
+                <input type="date" value={editDealDate} onChange={(e) => setEditDealDate(e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">退職予定日</label>
+                <input type="date" value={editRetirementDate} onChange={(e) => setEditRetirementDate(e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">流入経路</label>
+                <select value={editSourceCode} onChange={(e) => setEditSourceCode(e.target.value)} className={inputClass}>
+                  <option value="">-- 未選択 --</option>
+                  {mockSources.map((s) => (
+                    <option key={s.code} value={s.code}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">代理店</label>
+                <select value={editAgencyCode} onChange={(e) => setEditAgencyCode(e.target.value)} className={inputClass}>
+                  <option value="">-- なし --</option>
+                  {mockAgencies.map((a) => (
+                    <option key={a.code} value={a.code}>{a.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-          ))}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1">メモ</label>
+              <textarea value={editMemo} onChange={(e) => setEditMemo(e.target.value)} rows={3} placeholder="備考・メモ" className={inputClass} />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={handleSaveCustomer}
+                disabled={!editCustomerName.trim()}
+                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition disabled:opacity-50"
+              >
+                保存する
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                className="px-5 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm transition"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ── 表示モード ── */
+          <dl className="divide-y divide-gray-100">
+            {[
+              ['担当者', getUserName(deal.assigned_to)],
+              ['商談日', formatDate(deal.deal_date)],
+              ['退職予定日', deal.retirement_date],
+              ['流入経路', getSourceName(deal.source_code || deal.source)],
+              ['代理店', getAgencyName(deal.agency_code)],
+              ['メモ', deal.memo || '-'],
+            ].map(([label, value]) => (
+              <div key={label} className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
+                <dt className="text-sm font-medium text-gray-500">{label}</dt>
+                <dd className="sm:col-span-2 text-sm text-gray-900">{value}</dd>
+              </div>
+            ))}
 
-          {deal.interview_status && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
-              <dt className="text-sm font-medium text-gray-500">面談ステータス</dt>
-              <dd className="sm:col-span-2 text-sm text-gray-900">{deal.interview_status}</dd>
-            </div>
-          )}
-          {deal.result_status && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
-              <dt className="text-sm font-medium text-gray-500">結果</dt>
-              <dd className="sm:col-span-2 text-sm font-medium text-gray-900">{deal.result_status}</dd>
-            </div>
-          )}
-          {deal.hr_proposal && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
-              <dt className="text-sm font-medium text-gray-500">人材提案</dt>
-              <dd className="sm:col-span-2 text-sm text-gray-900">
-                {deal.hr_proposal}
-                {deal.hr_feasibility && ` ／ ${deal.hr_feasibility}`}
-                {deal.hr_target_28m && ' ／ 28ヶ月対象'}
-              </dd>
-            </div>
-          )}
-        </dl>
+            {deal.interview_status && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
+                <dt className="text-sm font-medium text-gray-500">面談ステータス</dt>
+                <dd className="sm:col-span-2 text-sm text-gray-900">{deal.interview_status}</dd>
+              </div>
+            )}
+            {deal.result_status && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
+                <dt className="text-sm font-medium text-gray-500">結果</dt>
+                <dd className="sm:col-span-2 text-sm font-medium text-gray-900">{deal.result_status}</dd>
+              </div>
+            )}
+            {deal.hr_proposal && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
+                <dt className="text-sm font-medium text-gray-500">人材提案</dt>
+                <dd className="sm:col-span-2 text-sm text-gray-900">
+                  {deal.hr_proposal}
+                  {deal.hr_feasibility && ` ／ ${deal.hr_feasibility}`}
+                  {deal.hr_target_28m && ' ／ 28ヶ月対象'}
+                </dd>
+              </div>
+            )}
+          </dl>
+        )}
 
         {/* 成約以降のアクションリンク */}
-        {isContractedOrLater && (
+        {!isEditing && isContractedOrLater && (
           <div className="flex flex-wrap gap-3 mt-5 pt-4 border-t border-gray-100">
             <Link
               href={`/deals/${deal.id}/contract-detail`}
@@ -212,7 +341,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
       {/* ── STEP 1: 面談記録（NEW のとき） ── */}
       {dealStatus === 'NEW' && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-400">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-purple-400">
           <h2 className="text-base font-bold text-gray-900 mb-1">面談結果を記録する</h2>
           <p className="text-xs text-gray-500 mb-4">面談が完了したら、ステータスを更新してください。</p>
 

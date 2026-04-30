@@ -103,7 +103,7 @@ export default function ContractPage({ params }: ContractPageProps) {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">締結画面</h1>
+        <h1 className="text-xl sm:text-3xl font-bold text-gray-900">締結画面</h1>
         <p className="text-sm text-gray-600 mt-2">ID: {deal.id} - {deal.customer_name}</p>
       </div>
 
@@ -120,7 +120,7 @@ export default function ContractPage({ params }: ContractPageProps) {
       )}
 
       {/* Form Card */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
         <form className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
             {/* 郵便番号 */}
@@ -212,7 +212,7 @@ export default function ContractPage({ params }: ContractPageProps) {
           </div>
 
           {/* Buttons */}
-          <div className="flex gap-3 justify-end pt-4">
+          <div className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end pt-4">
             <button
               type="button"
               onClick={() => router.back()}

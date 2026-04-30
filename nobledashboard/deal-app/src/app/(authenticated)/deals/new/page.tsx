@@ -12,6 +12,17 @@ import {
   type Deal,
 } from '@/lib/mock-data';
 
+// 流入経路（エルステ経由）オプション
+const FORM_SOURCES = [
+  { code: 'WEB',      name: 'WEB' },
+  { code: 'REF',      name: '紹介' },
+  { code: 'PHONE',    name: '電話' },
+  { code: 'LINE',     name: 'LINE' },
+  { code: 'WEB_META', name: 'WEBシーズ_Meta' },
+  { code: 'GOOGLE',   name: 'Googleリスティング' },
+  { code: 'TIKTOK',   name: 'TikTok' },
+];
+
 interface FormData {
   customer_name: string;
   assigned_to: string;
@@ -110,16 +121,23 @@ export default function NewDealPage() {
     }
   };
 
-  const inputClass = (field: keyof FormData) =>
+  // スタイルヘルパー
+  const inputCls = (field: keyof FormData) =>
     `w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
       errors[field] ? 'border-red-500' : 'border-gray-300'
     }`;
+  const selectCls = (field: keyof FormData) =>
+    `w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
+      errors[field] ? 'border-red-500' : 'border-gray-300'
+    }`;
+  const baseSelectCls =
+    'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white';
 
   const labelClass = 'block text-sm font-semibold text-gray-700 mb-1';
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* ヘッダー */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b-2 border-blue-600">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">新規商談登録</h1>
@@ -355,7 +373,7 @@ export default function NewDealPage() {
         </div>
       </div>
 
-      {/* キャンセル確認 */}
+      {/* キャンセル確認ダイアログ */}
       {showCancelConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">

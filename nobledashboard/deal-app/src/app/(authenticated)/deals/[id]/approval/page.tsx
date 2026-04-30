@@ -99,7 +99,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">事務承認</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">事務承認</h1>
         <p className="text-sm text-gray-500 mt-1">ID: {deal.id} / {deal.customer_name}</p>
       </div>
 
@@ -111,7 +111,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
       </div>
 
       {/* Deal Info Card */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
         <h2 className="text-xl font-bold mb-4">商談情報</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
           <div>
@@ -142,7 +142,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
       </div>
 
       {/* Contract Info Card */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
         <h2 className="text-xl font-bold mb-4">成約情報</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
           <div>
@@ -165,20 +165,20 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
       </div>
 
       {/* Approval Actions */}
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
         <h2 className="text-xl font-bold mb-4">承認操作</h2>
 
         {!showRejectForm ? (
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={handleApprove}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+              className="flex-1 sm:flex-none px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
             >
               承認
             </button>
             <button
               onClick={() => setShowRejectForm(true)}
-              className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+              className="flex-1 sm:flex-none px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
             >
               差し戻し
             </button>

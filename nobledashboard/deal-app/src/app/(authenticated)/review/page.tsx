@@ -95,54 +95,72 @@ export default function ReviewPage() {
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
-        {dealsWithDays.length === 0 ? (
-          <div className="p-8 text-center">
-            <p className="text-gray-500">検討中の案件はありません</p>
+      {dealsWithDays.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+          <p className="text-gray-500">検討中の案件はありません</p>
+        </div>
+      ) : (
+        <>
+          {/* モバイル: カード表示 */}
+          <div className="sm:hidden space-y-2">
+            {dealsWithDays.map((deal) => {
+              const style = getRowStyle(deal.daysRemaining);
+              return (
+                <div
+                  key={deal.id}
+                  onClick={() => router.push(`/deals/${deal.id}`)}
+                  className={`rounded-xl shadow-sm p-4 cursor-pointer border-l-4 ${style.bg} ${
+                    deal.daysRemaining <= 14 ? 'border-red-400' : deal.daysRemaining <= 30 ? 'border-yellow-400' : 'border-green-400'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-semibold text-gray-900 text-sm">{deal.customer_name}</p>
+                    <span className={`text-sm font-bold ${style.text}`}>{deal.daysRemaining}日</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-600">
+                    <span>担当：{getUserName(deal.assigned_to)}</span>
+                    <span>退職予定：{formatDate(deal.retirement_date)}</span>
+                    {deal.memo && <span className="col-span-2 truncate">メモ：{deal.memo}</span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        ) : (
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">顧客名</th>
-                <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">担当</th>
-                <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">退職予定日</th>
-                <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">残り日数</th>
-                <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">メモ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {dealsWithDays.map((deal) => {
-                const style = getRowStyle(deal.daysRemaining);
-                return (
-                  <tr
-                    key={deal.id}
-                    onClick={() => router.push(`/deals/${deal.id}`)}
-                    className={`cursor-pointer hover:bg-gray-100 transition ${style.bg}`}
-                  >
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">
-                      {deal.customer_name}
-                    </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">
-                      {getUserName(deal.assigned_to)}
-                    </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">
-                      {formatDate(deal.retirement_date)}
-                    </td>
-                    <td className={`px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-bold ${style.text}`}>
-                      {deal.daysRemaining}日
-                    </td>
-                    <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700 truncate">
-                      {deal.memo || '-'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+
+          {/* デスクトップ: テーブル表示 */}
+          <div className="hidden sm:block bg-white rounded-xl shadow-sm overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">顧客名</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">担当</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">退職予定日</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">残り日数</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">メモ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {dealsWithDays.map((deal) => {
+                  const style = getRowStyle(deal.daysRemaining);
+                  return (
+                    <tr
+                      key={deal.id}
+                      onClick={() => router.push(`/deals/${deal.id}`)}
+                      className={`cursor-pointer hover:bg-gray-100 transition ${style.bg}`}
+                    >
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{deal.customer_name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700">{getUserName(deal.assigned_to)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700">{formatDate(deal.retirement_date)}</td>
+                      <td className={`px-6 py-4 text-sm font-bold ${style.text}`}>{deal.daysRemaining}日</td>
+                      <td className="px-6 py-4 text-sm text-gray-700 truncate max-w-xs">{deal.memo || '-'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }
