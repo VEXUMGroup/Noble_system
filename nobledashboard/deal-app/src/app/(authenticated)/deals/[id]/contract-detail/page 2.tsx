@@ -20,14 +20,14 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
   const deal = mockDeals.find((d) => d.id === params.id);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // 成約プラン（10/12/18/24/28/30ヶ月 + その他）
+  // 成約プラン（10/12/18/28/30ヶ月 + その他）
   const [contractPlan, setContractPlan] = useState(deal?.contract_plan || '');
   const [contractPlanOther, setContractPlanOther] = useState(
     deal?.contract_plan_other || ''
   );
   // 支払いプラン（一括 / 分割 / 完全成功）
   const [paymentPlan, setPaymentPlan] = useState(deal?.payment_plan || '');
-  // 支払い方法（銀行振込 / カード / Stripe）
+  // 支払い方法（銀行振込 / カード）
   const [paymentMethod, setPaymentMethod] = useState(deal?.payment_method || '');
   // 支払い期限（自由記入）
   const [paymentDeadline, setPaymentDeadline] = useState(
@@ -40,20 +40,20 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
 
   if (!deal) {
     return (
-      <div className="bg-white rounded-xl shadow-sm p-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">成約詳細入力</h1>
-        <p className="text-gray-600 mb-6">商談が見つかりません。</p>
-        <button
-          onClick={() => router.push('/deals')}
-          className="text-blue-600 hover:text-blue-700"
-        >
-          商談一覧へ戻る
-        </button>
+      <div className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-lg shadow-md p-8 text-center">
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">404</h1>
+            <p className="text-gray-600">申し訳ございません。該当する商談が見つかりません。</p>
+          </div>
+        </div>
       </div>
     );
   }
 
   const handleConfirm = () => {
+    // 必須チェック：成約プラン／支払いプラン／支払い方法／支払い期限
+    // 「その他」選択時はコメント必須
     if (
       !contractPlan ||
       (contractPlan === 'その他' && !contractPlanOther.trim()) ||
@@ -83,41 +83,36 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
   };
 
   const selectClass =
-    'w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm';
+    'w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500';
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm text-gray-500 mb-1">成約詳細入力</p>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{deal.customer_name}</h1>
-          <p className="text-xs text-gray-400 mt-1">ID: {deal.id}</p>
+      <div>
+        <p className="text-sm text-gray-600 mb-2">成約詳細入力</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">{deal.customer_name}</h1>
+            <p className="text-sm text-gray-600 mt-2">ID: {deal.id}</p>
+          </div>
         </div>
-        <button
-          onClick={() => router.push(`/deals/${params.id}`)}
-          className="text-sm text-blue-600 hover:text-blue-700 whitespace-nowrap"
-        >
-          ← 商談詳細へ戻る
-        </button>
       </div>
 
       {showSuccess && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <p className="text-green-800 font-medium">✓ 成約詳細を保存しました</p>
+          <p className="text-green-800 font-medium">成約詳細を保存しました</p>
         </div>
       )}
 
       {errorMessage && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-700 text-sm font-medium">{errorMessage}</p>
+          <p className="text-red-700 font-medium">{errorMessage}</p>
         </div>
       )}
 
       {/* Form Card */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <form className="space-y-6">
-
           {/* 成約プラン */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -210,7 +205,7 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
                 setPaymentDeadline(e.target.value);
                 setErrorMessage('');
               }}
-              placeholder="自由記入（例：2026年6月末、初診日翌月末、締結後7日以内 など）"
+              placeholder="自由記入（例：2026年6月末、初診日翌月末、分割初回は締結後7日以内 など）"
               className={selectClass}
             />
           </div>
@@ -219,7 +214,6 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               イレギュラー記載
-              <span className="ml-2 text-xs font-normal text-gray-400">（任意）</span>
             </label>
             <textarea
               value={irregularNotes}
@@ -228,26 +222,26 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
               placeholder="支払い回数、入金者変更、その他通常運用と異なる点があれば記載"
               className={selectClass}
             />
-            <p className="mt-1 text-xs text-gray-400">
-              例：支払い回数を3回→4回に変更 ／ 入金者が本人から親族に変更 など
+            <p className="mt-1 text-xs text-gray-500">
+              例：支払い回数を3回→4回に変更／入金者が本人から親族に変更 など
             </p>
           </div>
 
           {/* Buttons */}
-          <div className="flex flex-col sm:flex-row gap-3 justify-end pt-4 border-t border-gray-100">
+          <div className="flex gap-3 justify-end pt-4">
             <button
               type="button"
               onClick={() => router.back()}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-sm"
+              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
             >
               戻る
             </button>
             <button
               type="button"
               onClick={handleConfirm}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
             >
-              確定して保存
+              確定
             </button>
           </div>
         </form>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   mockDeals,
@@ -10,14 +10,15 @@ import {
 } from '@/lib/mock-data';
 
 interface ContractDetailPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default function ContractDetailPage({ params }: ContractDetailPageProps) {
+  const { id } = use(params);
   const router = useRouter();
-  const deal = mockDeals.find((d) => d.id === params.id);
+  const deal = mockDeals.find((d) => d.id === id);
   const [showSuccess, setShowSuccess] = useState(false);
   const [proposalContent, setProposalContent] = useState(deal?.proposal_content || '');
   const [amount, setAmount] = useState(deal?.amount?.toString() || '');
@@ -47,7 +48,7 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
   const handleConfirm = () => {
     setShowSuccess(true);
     setTimeout(() => {
-      router.push(`/deals/${params.id}`);
+      router.push(`/deals/${id}`);
     }, 1500);
   };
 

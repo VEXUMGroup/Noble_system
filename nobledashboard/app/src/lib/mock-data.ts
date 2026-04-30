@@ -22,6 +22,7 @@ export interface Deal {
   agency_type?: string;        // 新規 / 既存
   interview_status: InterviewStatus;
   result_status?: ResultStatus;
+  out_of_scope_reason?: string;  // 対象外の理由
   contract_confirm?: ContractConfirmStatus;
   contract_date?: string;
   proposal_content?: string;   // 提案内容

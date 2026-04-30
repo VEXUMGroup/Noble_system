@@ -1,502 +1,382 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import {
-  STATUS_CONFIG,
-  VALID_TRANSITIONS,
-  type DealStatus,
-} from '@/lib/types';
+import { useRouter } from 'next/navigation';
+import { RESULT_STATUS_TO_DEAL_STATUS } from '@/lib/types';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 import {
   mockDeals,
-  getUserName,
-  getPlanName,
+  formatDate,
   getAgencyName,
   getSourceName,
-  formatCurrency,
-  formatDate,
-  getDaysUntil,
+  getUserName,
+  interviewStatuses,
+  resultStatuses,
+  consideringReasons,
+  outOfScopeReasons,
+  lostReasons,
+  hrProposalOptions,
+  hrFeasibilityOptions,
 } from '@/lib/mock-data';
-import { StatusBadge } from '@/components/ui/StatusBadge';
-
-// Mock status history
-interface StatusHistory {
-  id: string;
-  status: string;
-  changed_by: string;
-  changed_at: string;
-  comment?: string;
-}
-
-function getMockHistory(dealId: string): StatusHistory[] {
-  const deal = mockDeals.find((d) => d.id === dealId);
-  if (!deal) return [];
-
-  const history: StatusHistory[] = [
-    {
-      id: '1',
-      status: 'NEW',
-      changed_by: 'システム',
-      changed_at: deal.created_at,
-      comment: 'Googleカレンダーから自動取得',
-    },
-  ];
-
-  const statusOrder: DealStatus[] = [
-    'NEW', 'INTERVIEWED', 'CONTRACTED', 'CONSIDERING',
-    'DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED',
-    'PAYMENT_MANAGING', 'COMPLETED',
-  ];
-
-  const currentIdx = statusOrder.indexOf(deal.status as DealStatus);
-  if (currentIdx > 0 && deal.status !== 'CONSIDERING') {
-    const progression = statusOrder.slice(1, currentIdx + 1).filter((s) => s !== 'CONSIDERING');
-    const baseDate = new Date(deal.created_at);
-    progression.forEach((status, i) => {
-      const date = new Date(baseDate);
-      date.setDate(date.getDate() + (i + 1) * 3);
-      history.push({
-        id: String(i + 2),
-        status,
-        changed_by: getUserName(deal.assigned_to),
-        changed_at: date.toISOString(),
-      });
-    });
-  } else if (deal.status === 'CONSIDERING') {
-    history.push({
-      id: '2',
-      status: 'INTERVIEWED',
-      changed_by: getUserName(deal.assigned_to),
-      changed_at: new Date(new Date(deal.created_at).getTime() + 3 * 86400000).toISOString(),
-    });
-    history.push({
-      id: '3',
-      status: 'CONSIDERING',
-      changed_by: getUserName(deal.assigned_to),
-      changed_at: new Date(new Date(deal.created_at).getTime() + 6 * 86400000).toISOString(),
-      comment: deal.memo || undefined,
-    });
-  } else if (deal.status === 'INTERVIEWED') {
-    history.push({
-      id: '2',
-      status: 'INTERVIEWED',
-      changed_by: getUserName(deal.assigned_to),
-      changed_at: new Date(new Date(deal.created_at).getTime() + 3 * 86400000).toISOString(),
-    });
-  }
-
-  return history;
-}
 
 interface DealDetailPageProps {
-  params: {
-    id: string;
-  };
+  params: { id: string };
 }
 
 export default function DealDetailPage({ params }: DealDetailPageProps) {
   const router = useRouter();
-  const originalDeal = mockDeals.find((d) => d.id === params.id);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [pendingStatus, setPendingStatus] = useState<DealStatus | null>(null);
-  const [currentStatus, setCurrentStatus] = useState<DealStatus | null>(
-    originalDeal?.status ?? null
-  );
-  const [statusMessage, setStatusMessage] = useState('');
+  const deal = mockDeals.find((item) => item.id === params.id);
 
-  const deal = originalDeal && currentStatus
-    ? { ...originalDeal, status: currentStatus }
-    : originalDeal;
+  // 面談記録フォームの状態（NEW のとき表示）
+  const [interviewStatus, setInterviewStatus] = useState('');
+  const [interviewError, setInterviewError] = useState('');
+
+  // 結果入力フォームの状態（INTERVIEWED のとき表示）
+  const [resultStatus, setResultStatus] = useState('');
+  const [consideringReason, setConsideringReason] = useState('');
+  const [consideringComment, setConsideringComment] = useState('');
+  const [outOfScopeReason, setOutOfScopeReason] = useState('');
+  const [outOfScopeComment, setOutOfScopeComment] = useState('');
+  const [lostReason, setLostReason] = useState('');
+  const [lostComment, setLostComment] = useState('');
+  const [hrProposal, setHrProposal] = useState('');
+  const [hrFeasibility, setHrFeasibility] = useState('');
+  const [hrTarget28m, setHrTarget28m] = useState(false);
+  const [nextActionDate, setNextActionDate] = useState('');
+  const [resultError, setResultError] = useState('');
+
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   if (!deal) {
     return (
-      <div className="space-y-6">
-        <Link href="/deals" className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors">
-          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          一覧に戻る
-        </Link>
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center">
-          <p className="text-5xl mb-4">404</p>
-          <h1 className="text-xl font-bold text-gray-800 mb-2">商談が見つかりません</h1>
-          <p className="text-gray-500">該当する商談データが存在しないか、削除された可能性があります。</p>
-        </div>
+      <div className="bg-white rounded-xl shadow-sm p-8">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">商談詳細</h1>
+        <p className="text-gray-600 mb-6">商談が見つかりません。</p>
+        <Link href="/deals" className="text-blue-600 hover:text-blue-700">商談一覧へ戻る</Link>
       </div>
     );
   }
 
-  const validTransitions = VALID_TRANSITIONS[deal.status as DealStatus] || [];
-  const statusHistory = getMockHistory(deal.id);
+  // ── 面談記録を保存（NEW → INTERVIEWED or 結果ステータス）
+  const handleSaveInterview = () => {
+    if (!interviewStatus) {
+      setInterviewError('面談ステータスを選択してください');
+      return;
+    }
+    deal.interview_status = interviewStatus;
+    deal.status = interviewStatus === '面談実施' ? 'INTERVIEWED' : 'NEW';
+    deal.updated_at = new Date().toISOString();
+    setInterviewError('');
+    setSuccessMessage('面談記録を保存しました');
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 2500);
+    // 画面を再レンダーするため state を更新（react的な再描画トリガー）
+    router.refresh();
+  };
 
-  const handleContracted = () => {
-    if (originalDeal) {
-      originalDeal.status = 'CONTRACTED';
-      originalDeal.updated_at = new Date().toISOString();
+  // ── 結果を保存（INTERVIEWED → 成約/検討/対象外/失注）
+  const handleSaveResult = () => {
+    if (!resultStatus) {
+      setResultError('結果ステータスを選択してください');
+      return;
     }
-    router.push(`/deals/${params.id}/contract-detail`);
-  };
-  const handleConsidering = () => {
-    if (originalDeal) {
-      originalDeal.status = 'CONSIDERING';
-      originalDeal.updated_at = new Date().toISOString();
+    const mappedStatus = RESULT_STATUS_TO_DEAL_STATUS[resultStatus];
+    deal.result_status = resultStatus;
+    deal.status = mappedStatus;
+    deal.hr_proposal = hrProposal || undefined;
+    deal.hr_feasibility = hrFeasibility || undefined;
+    deal.hr_target_28m = hrTarget28m || undefined;
+    deal.next_action_date = nextActionDate || undefined;
+    if (resultStatus === '検討') {
+      deal.considering_reason = consideringReason || undefined;
+      deal.considering_reason_comment = consideringComment || undefined;
     }
-    router.push('/review');
-  };
-  const handleOutOfScope = () => {
-    setPendingStatus('OUT_OF_SCOPE');
-    setShowConfirm(true);
-  };
-  const confirmOutOfScope = () => {
-    setShowConfirm(false);
-    setPendingStatus(null);
-    if (originalDeal) {
-      originalDeal.status = 'OUT_OF_SCOPE';
-      originalDeal.updated_at = new Date().toISOString();
+    if (resultStatus === '対象外') {
+      deal.out_of_scope_reason = outOfScopeReason || undefined;
+      deal.out_of_scope_reason_comment = outOfScopeComment || undefined;
     }
-    router.push('/deals');
-  };
-  const handleStatusChange = (newStatus: DealStatus) => {
-    if (!originalDeal) return;
+    if (resultStatus === '失注') {
+      deal.lost_reason = lostReason || undefined;
+      deal.lost_reason_comment = lostComment || undefined;
+    }
+    deal.updated_at = new Date().toISOString();
+    setResultError('');
+    setSuccessMessage(`結果「${resultStatus}」を保存しました`);
+    setShowSuccess(true);
 
-    setCurrentStatus(newStatus);
-    setStatusMessage(
-      newStatus === 'PAYMENT_MANAGING'
-        ? 'ステータスを「支払管理中」に更新し、支払管理画面へ移動します。'
-        : `ステータスを「${STATUS_CONFIG[newStatus].label}」に更新しました。`
-    );
-    originalDeal.status = newStatus;
-    originalDeal.updated_at = new Date().toISOString();
-
-    if (newStatus === 'PAYMENT_MANAGING') {
-      router.push('/payments');
+    if (resultStatus === '成約') {
+      setTimeout(() => router.push(`/deals/${deal.id}/contract-detail`), 1200);
+    } else {
+      setTimeout(() => setShowSuccess(false), 2500);
+      router.refresh();
     }
   };
+
+  const selectClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const selectErrorClass = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400';
 
   return (
     <div className="space-y-6">
-      {/* Header - matches wireframe ScreenHeader */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-blue-600 pb-3">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-gray-900">
-            {deal.id} {deal.customer_name} 様 <StatusBadge status={deal.status} />
-          </h1>
-          <p className="text-xs text-gray-500 mt-1">案件の詳細情報表示・編集｜対象: 全ロール（操作はロール別）</p>
+          <h1 className="text-2xl font-bold text-gray-900">商談詳細</h1>
+          <p className="text-xs text-gray-400 mt-1">{deal.id}</p>
         </div>
-        <Link
-          href="/deals"
-          className="self-start px-4 py-2 border border-gray-400 text-gray-600 rounded-lg hover:bg-gray-100 text-sm font-medium transition"
-        >
-          一覧に戻る
-        </Link>
+        <Link href="/deals" className="text-sm text-blue-600 hover:text-blue-700">← 商談一覧</Link>
       </div>
 
-      {statusMessage && (
+      {showSuccess && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <p className="text-green-800 font-medium">{statusMessage}</p>
+          <p className="text-green-800 font-medium">✓ {successMessage}</p>
         </div>
       )}
 
-      {/* 2-Column Layout: 2fr 1fr */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column (2fr) */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* 基本情報 */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-base font-bold mb-4 pb-2 border-b border-gray-100">基本情報（営業は編集可）</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
-              <div>
-                <p className="text-xs text-gray-500 mb-1">お客様氏名</p>
-                <p className="text-sm font-medium text-gray-900">{deal.customer_name}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">担当</p>
-                <p className="text-sm font-medium text-gray-900">{getUserName(deal.assigned_to)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">商談日</p>
-                <p className="text-sm font-medium text-gray-900">{formatDate(deal.deal_date)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">流入経路</p>
-                <p className="text-sm font-medium text-gray-900">{getSourceName(deal.source)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">退職予定日</p>
-                <p className="text-sm font-medium text-gray-900">
-                  {formatDate(deal.retirement_date)}
-                  {deal.status === 'CONSIDERING' && getDaysUntil(deal.retirement_date) <= 14 && (
-                    <span className="ml-2 text-red-600 text-xs font-bold">
-                      ({getDaysUntil(deal.retirement_date)}日後)
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">紹介者（代理店経由）</p>
-                <p className="text-sm font-medium text-gray-900">{deal.referrer || getAgencyName(deal.agency_code)}</p>
-              </div>
-              {deal.memo && (
-                <div className="col-span-2">
-                  <p className="text-xs text-gray-500 mb-1">メモ</p>
-                  <p className="text-sm text-gray-900">{deal.memo}</p>
-                </div>
-              )}
-            </div>
+      {/* 基本情報 */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="flex items-center justify-between gap-4 mb-5">
+          <div>
+            <p className="text-xs text-gray-400 mb-1">顧客名</p>
+            <p className="text-xl font-bold text-gray-900">{deal.customer_name}</p>
           </div>
-
-          {/* 成約情報 */}
-          {(deal.plan_code || deal.amount) && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-base font-bold mb-4 pb-2 border-b border-gray-100">成約情報</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
-                {deal.plan_code && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">プラン</p>
-                    <p className="text-sm font-medium text-gray-900">{getPlanName(deal.plan_code)}</p>
-                  </div>
-                )}
-                {deal.amount != null && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">金額</p>
-                    <p className="text-sm font-medium text-gray-900">{formatCurrency(deal.amount)}</p>
-                  </div>
-                )}
-                {deal.payment_method && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">支払方法</p>
-                    <p className="text-sm font-medium text-gray-900">{deal.payment_method === 'stripe' ? 'Stripe決済' : '振り込み'}</p>
-                  </div>
-                )}
-                {deal.payment_deadline && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">支払期限</p>
-                    <p className="text-sm font-medium text-gray-900">{formatDate(deal.payment_deadline)}</p>
-                  </div>
-                )}
-                {deal.payment_plan && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">支払いプラン</p>
-                    <p className="text-sm font-medium text-gray-900">{deal.payment_plan}</p>
-                  </div>
-                )}
-                {deal.proposal_content && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">提案内容</p>
-                    <p className="text-sm font-medium text-gray-900">{deal.proposal_content}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 締結情報 */}
-          {(deal.address || deal.contract_date) && (
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-base font-bold mb-4 pb-2 border-b border-gray-100">締結情報</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
-                {deal.address && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">住所</p>
-                    <p className="text-sm font-medium text-gray-900">{deal.address}</p>
-                  </div>
-                )}
-                {deal.contract_date && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">締結日</p>
-                    <p className="text-sm font-medium text-gray-900">{formatDate(deal.contract_date)}</p>
-                  </div>
-                )}
-                {deal.contract_confirmation && (
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">契約書締結確認</p>
-                    <p className="text-sm font-medium text-gray-900">{deal.contract_confirmation}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 履歴 */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-base font-bold mb-4 pb-2 border-b border-gray-100">ステータス変更履歴・担当メモ（時系列）</h2>
-            <div className="space-y-0">
-              {statusHistory.map((entry, index) => {
-                const config = STATUS_CONFIG[entry.status];
-                return (
-                  <div key={entry.id} className="flex flex-wrap sm:flex-nowrap gap-1 sm:gap-3 py-2 border-b border-gray-50 text-sm">
-                    <span className="text-gray-400 whitespace-nowrap">
-                      {formatDate(entry.changed_at.split('T')[0])}
-                    </span>
-                    <span className="text-blue-600 font-semibold whitespace-nowrap">{entry.changed_by}</span>
-                    <span className="text-gray-900">
-                      {config ? config.label : entry.status}
-                      {entry.comment && ` — ${entry.comment}`}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <StatusBadge status={deal.status} />
         </div>
 
-        {/* Right Sidebar (1fr) */}
-        <div className="space-y-6">
-          {/* ステータス操作 */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-base font-bold mb-3 pb-2 border-b border-gray-100">ステータス操作</h2>
-            <p className="text-xs text-gray-400 mb-4">現在のステータスに応じたアクションボタンを動的表示</p>
+        <dl className="divide-y divide-gray-100">
+          {[
+            ['担当者', getUserName(deal.assigned_to)],
+            ['商談日', formatDate(deal.deal_date)],
+            ['退職予定日', deal.retirement_date],
+            ['流入経路', getSourceName(deal.source_code || deal.source)],
+            ['代理店', getAgencyName(deal.agency_code)],
+            ['メモ', deal.memo || '-'],
+          ].map(([label, value]) => (
+            <div key={label} className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
+              <dt className="text-sm font-medium text-gray-500">{label}</dt>
+              <dd className="sm:col-span-2 text-sm text-gray-900">{value}</dd>
+            </div>
+          ))}
 
-            {validTransitions.length > 0 ? (
-              <div className="space-y-3">
-                {/* INTERVIEWED → 成約/検討/対象外 */}
-                {deal.status === 'INTERVIEWED' && (
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <p className="text-xs font-semibold text-blue-600 mb-3">面談済の場合</p>
-                    <div className="flex flex-col gap-2">
-                      <button onClick={handleContracted} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition">
-                        成約
-                      </button>
-                      <button onClick={handleConsidering} className="w-full px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 font-medium text-sm transition">
-                        検討
-                      </button>
-                      <button onClick={handleOutOfScope} className="w-full px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 font-medium text-sm transition">
-                        対象外
-                      </button>
-                    </div>
-                  </div>
-                )}
+          {/* 面談済みの場合は記録した情報を表示 */}
+          {deal.interview_status && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
+              <dt className="text-sm font-medium text-gray-500">面談ステータス</dt>
+              <dd className="sm:col-span-2 text-sm text-gray-900">{deal.interview_status}</dd>
+            </div>
+          )}
+          {deal.result_status && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
+              <dt className="text-sm font-medium text-gray-500">結果</dt>
+              <dd className="sm:col-span-2 text-sm font-medium text-gray-900">{deal.result_status}</dd>
+            </div>
+          )}
+          {deal.hr_proposal && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
+              <dt className="text-sm font-medium text-gray-500">人材提案</dt>
+              <dd className="sm:col-span-2 text-sm text-gray-900">
+                {deal.hr_proposal}
+                {deal.hr_feasibility && ` ／ ${deal.hr_feasibility}`}
+                {deal.hr_target_28m && ' ／ 28ヶ月対象'}
+              </dd>
+            </div>
+          )}
+        </dl>
 
-                {/* NEW → 面談済 */}
-                {deal.status === 'NEW' && (
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <p className="text-xs font-semibold text-blue-600 mb-3">新規の場合</p>
-                    <button onClick={() => handleStatusChange('INTERVIEWED')} className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm transition">
-                      面談済みにする
-                    </button>
-                  </div>
-                )}
-
-                {/* CONTRACTED → 詳細入力 */}
-                {deal.status === 'CONTRACTED' && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-xs font-semibold text-gray-500 mb-3">成約の場合</p>
-                    <Link href={`/deals/${params.id}/contract-detail`} className="block w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium text-sm transition text-center">
-                      詳細入力へ進む
-                    </Link>
-                  </div>
-                )}
-
-                {/* CONSIDERING → 成約/対象外 + 検討管理 */}
-                {deal.status === 'CONSIDERING' && (
-                  <>
-                    <div className="bg-blue-50 rounded-lg p-4">
-                      <p className="text-xs font-semibold text-blue-600 mb-3">検討中の場合</p>
-                      <div className="flex flex-col gap-2">
-                        <button onClick={handleContracted} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition">
-                          成約
-                        </button>
-                        <button onClick={handleOutOfScope} className="w-full px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 font-medium text-sm transition">
-                          対象外
-                        </button>
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-xs font-semibold text-gray-500 mb-3">検討の場合</p>
-                      <Link href="/review" className="block w-full px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 font-medium text-sm transition text-center">
-                        検討管理へ
-                      </Link>
-                    </div>
-                  </>
-                )}
-
-                {/* DETAIL_ENTERED → 事務承認 */}
-                {deal.status === 'DETAIL_ENTERED' && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <Link href={`/deals/${params.id}/approval`} className="block w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition text-center">
-                      事務承認画面へ
-                    </Link>
-                  </div>
-                )}
-
-                {/* APPROVED → 締結 */}
-                {deal.status === 'APPROVED' && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <Link href={`/deals/${params.id}/contract`} className="block w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition text-center">
-                      締結画面へ進む
-                    </Link>
-                  </div>
-                )}
-
-                {/* CONTRACT_SIGNED → 支払管理 */}
-                {deal.status === 'CONTRACT_SIGNED' && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <button onClick={() => handleStatusChange('PAYMENT_MANAGING')} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition">
-                      支払管理へ移行
-                    </button>
-                  </div>
-                )}
-
-                {/* PAYMENT_MANAGING → 完了 */}
-                {deal.status === 'PAYMENT_MANAGING' && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <button onClick={() => handleStatusChange('COMPLETED')} className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm transition">
-                      完了にする
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm">
-                {deal.status === 'COMPLETED' ? 'この案件は完了しています。' : 'ステータスの変更はできません。'}
-              </p>
+        {/* 成約以降のアクションリンク */}
+        {['CONTRACTED', 'DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(deal.status) && (
+          <div className="flex flex-wrap gap-3 mt-5 pt-4 border-t border-gray-100">
+            <Link
+              href={`/deals/${deal.id}/contract-detail`}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              成約詳細を入力
+            </Link>
+            {['DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(deal.status) && (
+              <Link
+                href={`/deals/${deal.id}/approval`}
+                className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700"
+              >
+                事務承認
+              </Link>
             )}
           </div>
-
-          {/* 案件情報サイドバー */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-base font-bold mb-3 pb-2 border-b border-gray-100">案件情報</h2>
-            <div className="space-y-0 text-sm">
-              {[
-                ['面談ステータス', deal.interview_status || '-'],
-                ['結果ステータス', deal.result_status || '（未選択）'],
-                ['契約書締結確認', deal.contract_confirmation || '未送付'],
-                ['見込み顧客', deal.prospect_level || '-'],
-                ['代理店新旧', deal.agency_type || '-'],
-              ].map(([key, value], i) => (
-                <div key={i} className="flex justify-between py-2 border-b border-gray-50">
-                  <span className="text-gray-400">{key}</span>
-                  <span className="font-semibold text-gray-900">{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* 対象外確認ダイアログ */}
-      {showConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
-            <h2 className="text-lg font-bold mb-3">対象外に変更しますか？</h2>
-            <p className="text-gray-600 mb-6 text-sm">
-              この操作を行うと、案件は「対象外」として終了します。この操作は取り消せません。
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setShowConfirm(false); setPendingStatus(null); }}
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
+      {/* ── STEP 1: 面談記録（NEW のとき） ── */}
+      {deal.status === 'NEW' && (
+        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-400">
+          <h2 className="text-base font-bold text-gray-900 mb-1">面談結果を記録する</h2>
+          <p className="text-xs text-gray-500 mb-4">面談が完了したら、ステータスを更新してください。</p>
+
+          <div className="space-y-4 max-w-sm">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                面談ステータス <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={interviewStatus}
+                onChange={(e) => { setInterviewStatus(e.target.value); setInterviewError(''); }}
+                className={interviewError ? selectErrorClass : selectClass}
               >
-                キャンセル
-              </button>
-              <button
-                onClick={confirmOutOfScope}
-                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium transition-colors"
-              >
-                対象外にする
-              </button>
+                <option value="">-- 選択してください --</option>
+                {interviewStatuses.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              {interviewError && <p className="text-red-500 text-xs mt-1">{interviewError}</p>}
             </div>
+
+            <button
+              onClick={handleSaveInterview}
+              className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm transition"
+            >
+              記録する
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 2: 結果入力（INTERVIEWED のとき） ── */}
+      {deal.status === 'INTERVIEWED' && (
+        <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
+          <h2 className="text-base font-bold text-gray-900 mb-1">面談結果を入力する</h2>
+          <p className="text-xs text-gray-500 mb-5">成約・検討・対象外・失注のいずれかを選択してください。</p>
+
+          <div className="space-y-5">
+            {/* 結果ステータス */}
+            <div className="max-w-sm">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                結果 <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={resultStatus}
+                onChange={(e) => { setResultStatus(e.target.value); setResultError(''); }}
+                className={resultError ? selectErrorClass : selectClass}
+              >
+                <option value="">-- 選択してください --</option>
+                {resultStatuses.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              {resultError && <p className="text-red-500 text-xs mt-1">{resultError}</p>}
+            </div>
+
+            {/* 検討理由 */}
+            {resultStatus === '検討' && (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg space-y-3 max-w-lg">
+                <p className="text-xs font-bold text-yellow-800">検討理由</p>
+                <select
+                  value={consideringReason}
+                  onChange={(e) => setConsideringReason(e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">-- 選択 --</option>
+                  {consideringReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <textarea
+                  value={consideringComment}
+                  onChange={(e) => setConsideringComment(e.target.value)}
+                  placeholder="補足コメント（任意）"
+                  rows={2}
+                  className={selectClass}
+                />
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">次回アクション日</label>
+                  <input
+                    type="date"
+                    value={nextActionDate}
+                    onChange={(e) => setNextActionDate(e.target.value)}
+                    className={selectClass}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 対象外理由 */}
+            {resultStatus === '対象外' && (
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3 max-w-lg">
+                <p className="text-xs font-bold text-gray-700">対象外理由</p>
+                <select
+                  value={outOfScopeReason}
+                  onChange={(e) => setOutOfScopeReason(e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">-- 選択 --</option>
+                  {outOfScopeReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <textarea
+                  value={outOfScopeComment}
+                  onChange={(e) => setOutOfScopeComment(e.target.value)}
+                  placeholder="補足コメント（任意）"
+                  rows={2}
+                  className={selectClass}
+                />
+              </div>
+            )}
+
+            {/* 失注理由 */}
+            {resultStatus === '失注' && (
+              <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg space-y-3 max-w-lg">
+                <p className="text-xs font-bold text-rose-800">失注理由</p>
+                <select
+                  value={lostReason}
+                  onChange={(e) => setLostReason(e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">-- 選択 --</option>
+                  {lostReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <textarea
+                  value={lostComment}
+                  onChange={(e) => setLostComment(e.target.value)}
+                  placeholder="補足コメント（任意）"
+                  rows={2}
+                  className={selectClass}
+                />
+              </div>
+            )}
+
+            {/* 人材提案（結果選択後に表示） */}
+            {resultStatus && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg max-w-lg">
+                <p className="text-xs font-bold text-blue-800 mb-3">人材提案</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">対象区分</label>
+                    <select value={hrProposal} onChange={(e) => setHrProposal(e.target.value)} className={selectClass}>
+                      <option value="">-- 未選択 --</option>
+                      {hrProposalOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">可否</label>
+                    <select value={hrFeasibility} onChange={(e) => setHrFeasibility(e.target.value)} className={selectClass}>
+                      <option value="">-- 未選択 --</option>
+                      {hrFeasibilityOptions.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <label className="inline-flex items-center gap-2 mt-3 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={hrTarget28m}
+                    onChange={(e) => setHrTarget28m(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                  />
+                  28ヶ月対象
+                </label>
+              </div>
+            )}
+
+            <button
+              onClick={handleSaveResult}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm transition"
+            >
+              {resultStatus === '成約' ? '保存して成約詳細へ →' : '結果を保存する'}
+            </button>
           </div>
         </div>
       )}

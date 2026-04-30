@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
+const geistSans = localFont({
+  src: './fonts/GeistVF.woff',
+  weight: '100 900',
+});
 
 export const metadata: Metadata = {
   title: '商談管理システム',
@@ -16,7 +19,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
-      <body className={inter.className}>
+      <body className={geistSans.className}>
         {children}
       </body>
     </html>

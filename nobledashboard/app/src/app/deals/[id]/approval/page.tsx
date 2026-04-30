@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   INTERVIEW_STATUS_CONFIG,
@@ -21,14 +21,15 @@ import {
 import { StatusBadge } from '@/components/ui/StatusBadge';
 
 interface ApprovalPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default function ApprovalPage({ params }: ApprovalPageProps) {
+  const { id } = use(params);
   const router = useRouter();
-  const deal = mockDeals.find((d) => d.id === params.id);
+  const deal = mockDeals.find((d) => d.id === id);
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
@@ -51,7 +52,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
     setSuccessMessage('承認が完了しました。締結工程へ進行できます。');
     setShowSuccess(true);
     setTimeout(() => {
-      router.push(`/deals/${params.id}`);
+      router.push(`/deals/${id}`);
     }, 1500);
   };
 
@@ -63,7 +64,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
     setSuccessMessage('差し戻しました。営業担当へ通知しました。');
     setShowSuccess(true);
     setTimeout(() => {
-      router.push(`/deals/${params.id}`);
+      router.push(`/deals/${id}`);
     }, 1500);
   };
 

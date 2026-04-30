@@ -66,7 +66,7 @@ export const PAYMENT_STATUS_CONFIG: Record<PaymentStatus, { label: string; bgCol
 };
 
 // ========== ステータス変更履歴 ==========
-export type HistoryActionType = 'STATUS_CHANGE' | 'MEMO';
+export type HistoryActionType = 'STATUS_CHANGE' | 'MEMO' | 'FIELD_EDIT';
 
 export interface StatusHistory {
   id: string;
@@ -80,6 +80,11 @@ export interface StatusHistory {
   status_label?: string;       // 表示用ラベル（例：「面談済」）
   memo?: string;               // メモテキスト
   source?: string;             // データ取得元（例：「Googleカレンダーから自動取得」）
+  // FIELD_EDITの場合
+  field_key?: string;          // 変更されたフィールド (例: 'customer_name')
+  field_label?: string;        // 表示用ラベル (例: '顧客名')
+  old_value?: string;          // 変更前の値 (表示用文字列)
+  new_value?: string;          // 変更後の値 (表示用文字列)
 }
 
 // ========== 汎用ステータスバッジ取得 ==========

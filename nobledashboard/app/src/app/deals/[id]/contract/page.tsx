@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   mockDeals,
@@ -8,9 +8,9 @@ import {
 } from '@/lib/mock-data';
 
 interface ContractPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 const PREFECTURES = [
@@ -26,8 +26,9 @@ const PREFECTURES = [
 ];
 
 export default function ContractPage({ params }: ContractPageProps) {
+  const { id } = use(params);
   const router = useRouter();
-  const deal = mockDeals.find((d) => d.id === params.id);
+  const deal = mockDeals.find((d) => d.id === id);
   const [postalCode, setPostalCode] = useState('');
   const [prefecture, setPrefecture] = useState('');
   const [city, setCity] = useState('');
@@ -65,7 +66,7 @@ export default function ContractPage({ params }: ContractPageProps) {
     // In real app: create Customer record with address, update deal contract_date
     setShowSuccess(true);
     setTimeout(() => {
-      router.push(`/deals/${params.id}`);
+      router.push(`/deals/${id}`);
     }, 1500);
   };
 
@@ -184,5 +185,7 @@ export default function ContractPage({ params }: ContractPageProps) {
         </form>
       </div>
     </div>
+  );
+}
   );
 }

@@ -64,6 +64,24 @@ export function StatusTimeline({ history, title = 'ステータス変更履歴�
                       <span className="ml-2 text-gray-500">— {entry.source}</span>
                     )}
                   </div>
+                ) : entry.action_type === 'FIELD_EDIT' ? (
+                  <div className="text-sm text-gray-700">
+                    <span className="font-medium">{entry.user_name}</span>
+                    <span className="ml-2 inline-block px-2 py-0.5 text-xs bg-amber-100 text-amber-800 rounded">
+                      項目編集
+                    </span>
+                    <p className="mt-1 text-gray-700">
+                      <span className="font-medium">{entry.field_label}</span> を
+                      <span className="ml-1 line-through text-gray-500">
+                        {entry.old_value && entry.old_value.length > 0 ? entry.old_value : '(未設定)'}
+                      </span>
+                      <span className="mx-1 text-gray-400">→</span>
+                      <span className="font-medium text-gray-900">
+                        {entry.new_value && entry.new_value.length > 0 ? entry.new_value : '(未設定)'}
+                      </span>
+                      <span className="ml-1">に変更</span>
+                    </p>
+                  </div>
                 ) : (
                   <div className="text-sm text-gray-700">
                     <span className="font-medium">{entry.user_name}</span>
