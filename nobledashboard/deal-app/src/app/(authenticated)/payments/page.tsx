@@ -1,28 +1,28 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
+  STATUS_CONFIG,
+  type DealStatus,
+} from '@/lib/types';
+import {
+  mockDeals,
+  mockPaymentRecords,
   getAgencyName,
+  getPlanName,
   formatCurrency,
   formatDate,
+  type Deal,
+  type PaymentRecord,
 } from '@/lib/mock-data';
-import {
-  getDeals,
-  getPayments,
-  createPayment,
-  updateDeal,
-  nextPaymentId,
-  type DealRow,
-  type PaymentRow,
-} from '@/lib/supabase';
 
 interface PaymentDealInfo {
-  deal: DealRow;
+  deal: Deal;
   paid: number;
   unpaid: number;
   status: string;
   statusColor: string;
-  history: PaymentRow[];
+  history: PaymentRecord[];
   planCount: number;
   paidCount: number;
 }
@@ -38,21 +38,9 @@ export default function PaymentsPage() {
   const [paymentMemo, setPaymentMemo] = useState('');
   const [paymentMessage, setPaymentMessage] = useState('');
 
-  const [deals, setDeals] = useState<DealRow[]>([]);
-  const [paymentRecords, setPaymentRecords] = useState<PaymentRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const loadData = async () => {
-    setIsLoading(true);
-    const [d, p] = await Promise.all([getDeals(), getPayments()]);
-    setDeals(d);
-    setPaymentRecords(p);
-    setIsLoading(false);
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
+  // Use state for mock data so UI recomputes when we update records
+  const [deals, setDeals] = useState(() => mockDeals);
+  const [paymentRecords, setPaymentRecords] = useState(() => mockPaymentRecords);
   // Build payment deal info
   const paymentDeals = useMemo(() => {
     return deals
@@ -144,7 +132,7 @@ export default function PaymentsPage() {
     setPaymentMessage('');
   };
 
-  const handleRegisterPayment = async () => {
+  const handleRegisterPayment = () => {
     if (!selectedDeal) return;
 
     const amount = Number(paymentAmount.replace(/,/g, ''));
@@ -153,32 +141,33 @@ export default function PaymentsPage() {
       return;
     }
 
-    const newId = await nextPaymentId();
-    const { error: payErr } = await createPayment({
-      id: newId,
+    const newRecord = {
+      id: `PAY${String(paymentRecords.length + 1).padStart(3, '0')}`,
       deal_id: selectedDeal.deal.id,
       date: paymentDate,
       amount,
       method: paymentMethod,
-      memo: paymentMemo.trim() || null,
-      payer_name: payerName.trim() || null,
-      payment_status: paymentStatus,
-    });
-    if (payErr) {
-      setPaymentMessage(`入金登録に失敗しました：${payErr}`);
-      return;
-    }
+      memo: paymentMemo.trim() || undefined,
+      payer_name: payerName.trim() || undefined,
+    } as PaymentRecord;
 
-    const updatedPaid = (selectedDeal.deal.total_paid || 0) + amount;
-    const totalAmount = selectedDeal.deal.amount || 0;
-    const newDealStatus = totalAmount > 0 && updatedPaid >= totalAmount ? 'COMPLETED' : 'PAYMENT_MANAGING';
-    await updateDeal(selectedDeal.deal.id, {
-      total_paid: updatedPaid,
-      payment_status: paymentStatus,
-      status: newDealStatus,
-    });
+    setPaymentRecords((prev) => [...prev, newRecord]);
 
-    await loadData();
+    setDeals((prev) =>
+      prev.map((d) => {
+        if (d.id !== selectedDeal.deal.id) return d;
+        const updatedPaid = (d.total_paid || 0) + amount;
+        const totalAmount = d.amount || 0;
+        return {
+          ...d,
+          total_paid: updatedPaid,
+          payment_status: paymentStatus,
+          updated_at: new Date().toISOString(),
+          status: totalAmount > 0 && updatedPaid >= totalAmount ? 'COMPLETED' : 'PAYMENT_MANAGING',
+        };
+      })
+    );
+
     setPaymentMessage('入金を登録しました。');
     setTimeout(() => {
       setSelectedDeal(null);

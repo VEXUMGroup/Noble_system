@@ -1,32 +1,31 @@
-import { redirect } from 'next/navigation';
-import { getSessionState } from '@/lib/auth/access';
 import { AuthenticatedShell } from '@/components/layout/AuthenticatedShell';
-import { hasSupabaseCredentials } from '@/lib/supabase-auth/config';
-import { createServerSupabaseClient } from '@/lib/supabase-auth/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export default async function AuthenticatedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  if (!hasSupabaseCredentials()) {
-    redirect('/?error=config_missing');
-  }
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const supabase = createServerSupabaseClient();
-  const sessionState = await getSessionState(supabase);
+  const { data: member } = user
+      ? await supabase
+        .from('m_users')
+        .select('id, name, email, role')
+        .eq('auth_user_id', user.id)
+        .eq('is_active', true)
+        .maybeSingle()
+    : { data: null };
 
-  if (sessionState.status === 'anonymous') {
-    redirect('/?error=login_required');
-  }
+  const currentUser = {
+    id: member?.id ?? user?.id ?? 'unknown',
+    name: member?.name ?? user?.email ?? 'Unknown User',
+    email: member?.email ?? user?.email ?? '',
+    role: (member?.role ?? 'sales') as 'sales' | 'admin_staff' | 'manager',
+  };
 
-  if (sessionState.status === 'unauthorized') {
-    redirect('/auth/signout?reason=user_not_authorized');
-  }
-
-  return (
-    <AuthenticatedShell user={sessionState.user}>
-      {children}
-    </AuthenticatedShell>
-  );
+  return <AuthenticatedShell currentUser={currentUser}>{children}</AuthenticatedShell>;
 }

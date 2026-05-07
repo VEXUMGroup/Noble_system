@@ -2,8 +2,6 @@
 
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import type { AuthenticatedAppUser } from '@/lib/auth/access';
-import { getRoleLabel } from '@/lib/auth/access';
 
 const navGroups = [
   {
@@ -67,43 +65,33 @@ const navGroups = [
       </svg>
     ),
   },
-  {
-    label: 'マスタ管理',
-    href: '/master',
-    icon: (
-      <svg
-        className="w-5 h-5"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-        />
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-        />
-      </svg>
-    ),
-  },
 ];
 
 interface SidebarProps {
+  currentUser: {
+    id: string;
+    name: string;
+    email: string;
+    role: 'sales' | 'admin_staff' | 'manager';
+  };
   isOpen?: boolean;
   onClose?: () => void;
-  user: AuthenticatedAppUser;
 }
 
-export function Sidebar({ isOpen = false, onClose, user }: SidebarProps) {
+export function Sidebar({ currentUser, isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
 
+  const getRoleLabel = (role: string): string => {
+    const roleMap: Record<string, string> = {
+      sales: '営業',
+      admin_staff: '事務',
+      manager: 'マネージャー',
+    };
+    return roleMap[role] || role;
+  };
+
   const handleLinkClick = () => {
+    // モバイルでリンクをクリックしたらサイドバーを閉じる
     if (onClose) {
       onClose();
     }
@@ -206,23 +194,15 @@ export function Sidebar({ isOpen = false, onClose, user }: SidebarProps) {
         <div className="p-6 border-t border-gray-700">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
-              {user.name.charAt(0)}
+              {currentUser.name.charAt(0)}
             </div>
             <div>
-              <p className="text-sm font-medium">{user.name}</p>
+              <p className="text-sm font-medium">{currentUser.name}</p>
               <p className="text-xs text-gray-400">
-                {getRoleLabel(user.role)}
+                {getRoleLabel(currentUser.role)}
               </p>
             </div>
           </div>
-          <p className="mt-3 text-xs text-gray-500 break-all">{user.email}</p>
-          <Link
-            href="/auth/signout"
-            onClick={handleLinkClick}
-            className="mt-4 inline-flex text-sm text-blue-300 hover:text-blue-200 transition-colors"
-          >
-            ログアウト
-          </Link>
         </div>
       </div>
     </>

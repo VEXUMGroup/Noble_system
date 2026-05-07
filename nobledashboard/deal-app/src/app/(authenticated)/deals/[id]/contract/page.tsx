@@ -1,8 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getDeal, updateDeal, type DealRow } from '@/lib/supabase';
+import {
+  STATUS_CONFIG,
+  VALID_TRANSITIONS,
+  type DealStatus,
+} from '@/lib/types';
+import {
+  mockDeals,
+  mockUsers,
+  mockPlans,
+  mockSources,
+  mockAgencies,
+  mockNotifications,
+  getUserName,
+  getPlanName,
+  getAgencyName,
+  getSourceName,
+  formatCurrency,
+  formatDate,
+  getDaysUntil,
+  currentUser,
+  type Deal,
+  type Plan,
+  type Source,
+  type Agency,
+} from '@/lib/mock-data';
 
 interface ContractPageProps {
   params: {
@@ -24,35 +48,14 @@ const PREFECTURES = [
 
 export default function ContractPage({ params }: ContractPageProps) {
   const router = useRouter();
-  const [deal, setDeal] = useState<DealRow | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [postalCode, setPostalCode] = useState('');
+  const deal = mockDeals.find((d) => d.id === params.id);
+  const [postalCode, setPostalCode] = useState(deal?.address?.split(' ')[0] || '');
   const [prefecture, setPrefecture] = useState('');
   const [city, setCity] = useState('');
   const [address, setAddress] = useState('');
-  const [contractDate, setContractDate] = useState('');
+  const [contractDate, setContractDate] = useState(deal?.contract_date || '');
   const [showSuccess, setShowSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const row = await getDeal(params.id);
-      if (cancelled) return;
-      setDeal(row);
-      if (row) {
-        setPostalCode(row.address?.split(' ')[0] ?? '');
-        setContractDate(row.contract_date ?? '');
-      }
-      setIsLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, [params.id]);
-
-  if (isLoading) {
-    return <div className="bg-white rounded-xl shadow-sm p-8"><p className="text-gray-500">読み込み中…</p></div>;
-  }
 
   if (!deal) {
     return (
@@ -77,31 +80,23 @@ export default function ContractPage({ params }: ContractPageProps) {
     setErrorMessage('');
   };
 
-  const handleComplete = async () => {
+  const handleComplete = () => {
     if (!postalCode || !prefecture || !city || !address || !contractDate) {
       setErrorMessage('すべての項目を入力してください。');
       return;
     }
-    setIsSaving(true);
-    try {
-      const { data, error } = await updateDeal(deal.id, {
-        address: `${postalCode} ${prefecture}${city}${address}`,
-        contract_date: contractDate,
-        contract_confirmation: '完了',
-        status: 'CONTRACT_SIGNED',
-      });
-      if (!data) {
-        setErrorMessage(`保存に失敗しました：${error ?? '不明'}`);
-        return;
-      }
-      setErrorMessage('');
-      setShowSuccess(true);
-      setTimeout(() => {
-        router.push(`/deals/${params.id}`);
-      }, 1500);
-    } finally {
-      setIsSaving(false);
-    }
+
+    deal.address = `${postalCode} ${prefecture}${city}${address}`;
+    deal.contract_date = contractDate;
+    deal.contract_confirmation = '完了';
+    deal.status = 'CONTRACT_SIGNED';
+    deal.updated_at = new Date().toISOString();
+
+    setErrorMessage('');
+    setShowSuccess(true);
+    setTimeout(() => {
+      router.push(`/deals/${params.id}`);
+    }, 1500);
   };
 
   return (
@@ -228,10 +223,9 @@ export default function ContractPage({ params }: ContractPageProps) {
             <button
               type="button"
               onClick={handleComplete}
-              disabled={isSaving}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
             >
-              {isSaving ? '保存中…' : '締結完了'}
+              締結完了
             </button>
           </div>
         </form>

@@ -3,12 +3,25 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  mockDeals,
+  mockUsers,
+  mockSources,
   resultStatuses,
   prospectLevels,
   agencyTypes,
+  type Deal,
 } from '@/lib/mock-data';
-import { useMasterData } from '@/lib/useMasterData';
-import { createDeal, nextDealId } from '@/lib/supabase';
+
+// 流入経路（エルステ経由）オプション
+const FORM_SOURCES = [
+  { code: 'WEB',      name: 'WEB' },
+  { code: 'REF',      name: '紹介' },
+  { code: 'PHONE',    name: '電話' },
+  { code: 'LINE',     name: 'LINE' },
+  { code: 'WEB_META', name: 'WEBシーズ_Meta' },
+  { code: 'GOOGLE',   name: 'Googleリスティング' },
+  { code: 'TIKTOK',   name: 'TikTok' },
+];
 
 interface FormData {
   customer_name: string;
@@ -28,7 +41,6 @@ interface FormData {
 
 export default function NewDealPage() {
   const router = useRouter();
-  const { sources: dbSources, users: dbUsers, agencies: dbAgencies } = useMasterData();
   const [formData, setFormData] = useState<FormData>({
     customer_name: '',
     assigned_to: '',
@@ -47,8 +59,6 @@ export default function NewDealPage() {
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [showSuccess, setShowSuccess] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -71,40 +81,35 @@ export default function NewDealPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!validateForm()) return;
-    setSubmitError('');
-    setIsSaving(true);
-    try {
-      const newId = await nextDealId(formData.deal_date);
-      const { data: created, error } = await createDeal({
-        id: newId,
-        customer_name: formData.customer_name,
-        assigned_to: formData.assigned_to,
-        deal_date: formData.deal_date,
-        source: formData.source,
-        status: 'NEW',
-        retirement_date: formData.retirement_date,
-        result_status: formData.result_status || null,
-        prospect_level: formData.prospect_level || null,
-        referrer: formData.referrer || null,
-        agency_type: formData.agency_type || null,
-        memo: formData.memo || null,
-        next_action_date: formData.next_action_date || null,
-        recording_url: formData.recording_url || null,
-        remarks: formData.remarks || null,
-      });
-      if (!created) {
-        setSubmitError(`登録に失敗しました：${error ?? '不明なエラー'}`);
-        return;
-      }
-      setShowSuccess(true);
-      setTimeout(() => {
-        router.push(`/deals/${created.id}`);
-      }, 1000);
-    } finally {
-      setIsSaving(false);
-    }
+
+    const newDeal: Deal = {
+      id: `D-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${String(mockDeals.length + 1).padStart(3, '0')}`,
+      customer_name: formData.customer_name,
+      assigned_to: formData.assigned_to,
+      deal_date: formData.deal_date,
+      source: formData.source,
+      source_code: formData.source,
+      status: 'NEW',
+      retirement_date: formData.retirement_date,
+      result_status: formData.result_status || undefined,
+      prospect_level: formData.prospect_level || undefined,
+      referrer: formData.referrer || undefined,
+      agency_type: formData.agency_type || undefined,
+      memo: formData.memo || undefined,
+      next_action_date: formData.next_action_date || undefined,
+      recording_url: formData.recording_url || undefined,
+      remarks: formData.remarks || undefined,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    mockDeals.push(newDeal);
+    setShowSuccess(true);
+    setTimeout(() => {
+      router.push(`/deals/${newDeal.id}`);
+    }, 1200);
   };
 
   const handleCancel = () => {
@@ -117,10 +122,16 @@ export default function NewDealPage() {
   };
 
   // スタイルヘルパー
-  const inputClass = (field: keyof FormData) =>
+  const inputCls = (field: keyof FormData) =>
     `w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
       errors[field] ? 'border-red-500' : 'border-gray-300'
     }`;
+  const selectCls = (field: keyof FormData) =>
+    `w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
+      errors[field] ? 'border-red-500' : 'border-gray-300'
+    }`;
+  const baseSelectCls =
+    'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white';
 
   const labelClass = 'block text-sm font-semibold text-gray-700 mb-1';
 
@@ -136,10 +147,9 @@ export default function NewDealPage() {
           <button
             type="button"
             onClick={handleSave}
-            disabled={isSaving}
-            className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition disabled:opacity-50"
+            className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition"
           >
-            {isSaving ? '登録中…' : '登録する'}
+            登録する
           </button>
           <button
             type="button"
@@ -154,12 +164,6 @@ export default function NewDealPage() {
       {showSuccess && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <p className="text-green-800 font-medium">✓ 商談を登録しました。詳細画面に移動します…</p>
-        </div>
-      )}
-
-      {submitError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-700 text-sm">{submitError}</p>
         </div>
       )}
 
@@ -178,7 +182,7 @@ export default function NewDealPage() {
               value={formData.customer_name}
               onChange={handleChange}
               placeholder="例: 山田太郎"
-              className={inputClass('customer_name')}
+              className={inputCls('customer_name')}
             />
             {errors.customer_name && <p className="text-red-500 text-xs mt-1">{errors.customer_name}</p>}
           </div>
@@ -192,10 +196,10 @@ export default function NewDealPage() {
               name="assigned_to"
               value={formData.assigned_to}
               onChange={handleChange}
-              className={inputClass('assigned_to')}
+              className={selectCls('assigned_to')}
             >
               <option value="">-- 選択してください --</option>
-              {dbUsers.map((user) => (
+              {mockUsers.map((user) => (
                 <option key={user.id} value={user.id}>{user.name}</option>
               ))}
             </select>
@@ -209,7 +213,7 @@ export default function NewDealPage() {
               name="result_status"
               value={formData.result_status}
               onChange={handleChange}
-              className={inputClass('result_status')}
+              className={selectCls('result_status')}
             >
               <option value="">-- 未選択 --</option>
               {resultStatuses.map((s) => (
@@ -228,7 +232,7 @@ export default function NewDealPage() {
               name="deal_date"
               value={formData.deal_date}
               onChange={handleChange}
-              className={inputClass('deal_date')}
+              className={inputCls('deal_date')}
             />
             {errors.deal_date && <p className="text-red-500 text-xs mt-1">{errors.deal_date}</p>}
           </div>
@@ -240,7 +244,7 @@ export default function NewDealPage() {
               name="prospect_level"
               value={formData.prospect_level}
               onChange={handleChange}
-              className={inputClass('prospect_level')}
+              className={selectCls('prospect_level')}
             >
               <option value="">-- 未選択 --</option>
               {prospectLevels.map((p) => (
@@ -258,10 +262,10 @@ export default function NewDealPage() {
               name="source"
               value={formData.source}
               onChange={handleChange}
-              className={inputClass('source')}
+              className={selectCls('source')}
             >
               <option value="">-- 選択してください --</option>
-              {dbSources.map((s) => (
+              {mockSources.map((s) => (
                 <option key={s.code} value={s.code}>{s.name}</option>
               ))}
             </select>
@@ -271,17 +275,14 @@ export default function NewDealPage() {
           {/* 紹介者（代理店経由） */}
           <div>
             <label className={labelClass}>紹介者（代理店経由）</label>
-            <select
+            <input
+              type="text"
               name="referrer"
               value={formData.referrer}
               onChange={handleChange}
-              className={inputClass('referrer')}
-            >
-              <option value="">-- 未選択 --</option>
-              {dbAgencies.map((a) => (
-                <option key={a.code} value={a.code}>{a.name}</option>
-              ))}
-            </select>
+              placeholder="例: 代理店A"
+              className={inputCls('referrer')}
+            />
           </div>
 
           {/* 退職予定日 */}
@@ -294,7 +295,7 @@ export default function NewDealPage() {
               name="retirement_date"
               value={formData.retirement_date}
               onChange={handleChange}
-              className={inputClass('retirement_date')}
+              className={inputCls('retirement_date')}
             />
             {errors.retirement_date && <p className="text-red-500 text-xs mt-1">{errors.retirement_date}</p>}
           </div>
@@ -306,7 +307,7 @@ export default function NewDealPage() {
               name="agency_type"
               value={formData.agency_type}
               onChange={handleChange}
-              className={inputClass('agency_type')}
+              className={selectCls('agency_type')}
             >
               <option value="">-- 未選択 --</option>
               {agencyTypes.map((a) => (
@@ -341,7 +342,7 @@ export default function NewDealPage() {
               name="next_action_date"
               value={formData.next_action_date}
               onChange={handleChange}
-              className={inputClass('next_action_date')}
+              className={inputCls('next_action_date')}
             />
           </div>
 
@@ -353,7 +354,7 @@ export default function NewDealPage() {
               value={formData.recording_url}
               onChange={handleChange}
               placeholder="https://..."
-              className={inputClass('recording_url')}
+              className={inputCls('recording_url')}
             />
           </div>
         </div>

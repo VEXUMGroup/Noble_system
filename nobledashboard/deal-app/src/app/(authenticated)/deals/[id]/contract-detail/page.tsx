@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  mockDeals,
   contractPlanOptions,
   paymentPlanOptions,
   paymentMethodOptions,
 } from '@/lib/mock-data';
-import { getDeal, updateDeal, type DealRow } from '@/lib/supabase';
 
 interface ContractDetailPageProps {
   params: {
@@ -17,42 +17,26 @@ interface ContractDetailPageProps {
 
 export default function ContractDetailPage({ params }: ContractDetailPageProps) {
   const router = useRouter();
-  const [deal, setDeal] = useState<DealRow | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const deal = mockDeals.find((d) => d.id === params.id);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
 
-  const [contractPlan, setContractPlan] = useState('');
-  const [contractPlanOther, setContractPlanOther] = useState('');
-  const [paymentPlan, setPaymentPlan] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const [paymentDeadline, setPaymentDeadline] = useState('');
-  const [irregularNotes, setIrregularNotes] = useState('');
+  // 成約プラン（10/12/18/24/28/30ヶ月 + その他）
+  const [contractPlan, setContractPlan] = useState(deal?.contract_plan || '');
+  const [contractPlanOther, setContractPlanOther] = useState(
+    deal?.contract_plan_other || ''
+  );
+  // 支払いプラン（一括 / 分割 / 完全成功）
+  const [paymentPlan, setPaymentPlan] = useState(deal?.payment_plan || '');
+  // 支払い方法（銀行振込 / カード / Stripe）
+  const [paymentMethod, setPaymentMethod] = useState(deal?.payment_method || '');
+  // 支払い期限（自由記入）
+  const [paymentDeadline, setPaymentDeadline] = useState(
+    deal?.payment_deadline || ''
+  );
+  // イレギュラー記載（支払い回数、入金者変更など）
+  const [irregularNotes, setIrregularNotes] = useState(deal?.irregular_notes || '');
 
   const [errorMessage, setErrorMessage] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const row = await getDeal(params.id);
-      if (cancelled) return;
-      setDeal(row);
-      if (row) {
-        setContractPlan(row.contract_plan ?? '');
-        setContractPlanOther(row.contract_plan_other ?? '');
-        setPaymentPlan(row.payment_plan ?? '');
-        setPaymentMethod(row.payment_method ?? '');
-        setPaymentDeadline(row.payment_deadline ?? '');
-        setIrregularNotes(row.irregular_notes ?? '');
-      }
-      setIsLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, [params.id]);
-
-  if (isLoading) {
-    return <div className="bg-white rounded-xl shadow-sm p-8"><p className="text-gray-500">読み込み中…</p></div>;
-  }
 
   if (!deal) {
     return (
@@ -69,7 +53,7 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
     );
   }
 
-  const handleConfirm = async () => {
+  const handleConfirm = () => {
     if (
       !contractPlan ||
       (contractPlan === 'その他' && !contractPlanOther.trim()) ||
@@ -80,29 +64,22 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
       setErrorMessage('必須項目をすべて入力してください（「その他」選択時はコメントが必須です）。');
       return;
     }
-    setIsSaving(true);
-    try {
-      const { data, error } = await updateDeal(deal.id, {
-        contract_plan: contractPlan,
-        contract_plan_other: contractPlan === 'その他' ? contractPlanOther : null,
-        payment_plan: paymentPlan,
-        payment_method: paymentMethod,
-        payment_deadline: paymentDeadline,
-        irregular_notes: irregularNotes || null,
-        status: 'DETAIL_ENTERED',
-      });
-      if (!data) {
-        setErrorMessage(`保存に失敗しました：${error ?? '不明'}`);
-        return;
-      }
-      setErrorMessage('');
-      setShowSuccess(true);
-      setTimeout(() => {
-        router.push(`/deals/${params.id}`);
-      }, 1500);
-    } finally {
-      setIsSaving(false);
-    }
+
+    deal.contract_plan = contractPlan;
+    deal.contract_plan_other =
+      contractPlan === 'その他' ? contractPlanOther : undefined;
+    deal.payment_plan = paymentPlan;
+    deal.payment_method = paymentMethod;
+    deal.payment_deadline = paymentDeadline;
+    deal.irregular_notes = irregularNotes || undefined;
+    deal.status = 'DETAIL_ENTERED';
+    deal.updated_at = new Date().toISOString();
+
+    setErrorMessage('');
+    setShowSuccess(true);
+    setTimeout(() => {
+      router.push(`/deals/${params.id}`);
+    }, 1500);
   };
 
   const selectClass =
@@ -268,10 +245,9 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
             <button
               type="button"
               onClick={handleConfirm}
-              disabled={isSaving}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm disabled:opacity-50"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
             >
-              {isSaving ? '保存中…' : '確定して保存'}
+              確定して保存
             </button>
           </div>
         </form>

@@ -1,30 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { formatCurrency } from '@/lib/mock-data';
+import { useState } from 'react';
 import {
-  type MUser,
-  type MSource,
-  type MPlan,
-  type MAgency,
-  getSources,
-  getPlans,
-  getAgencies,
-  getUsers,
-  createSource,
-  createPlan,
-  createAgency,
-  createUser,
-  deleteSource,
-  deletePlan,
-  deleteAgency,
-  deleteUser,
-  nextUserId,
-} from '@/lib/supabase';
+  mockUsers,
+  mockPlans,
+  mockSources,
+  mockAgencies,
+  formatCurrency,
+  type User,
+  type Plan,
+  type Source,
+  type Agency,
+} from '@/lib/mock-data';
 
 type TabType = 'sources' | 'plans' | 'agencies' | 'users';
 
-const roleLabels: Record<MUser['role'], string> = {
+const roleLabels: Record<User['role'], string> = {
   sales: '営業',
   admin_staff: '事務',
   manager: '管理者',
@@ -32,19 +23,6 @@ const roleLabels: Record<MUser['role'], string> = {
 
 export default function MasterPage() {
   const [activeTab, setActiveTab] = useState<TabType>('sources');
-
-  // 一覧データ
-  const [sources, setSources] = useState<MSource[]>([]);
-  const [plans, setPlans] = useState<MPlan[]>([]);
-  const [agencies, setAgencies] = useState<MAgency[]>([]);
-  const [users, setUsers] = useState<MUser[]>([]);
-
-  // ローディング・エラー
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-
-  // モーダル
   const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState({
     code: '',
@@ -52,42 +30,14 @@ export default function MasterPage() {
     price: '',
     contact: '',
     email: '',
-    role: 'sales' as MUser['role'],
+    role: 'sales' as User['role'],
   });
+  const [sources, setSources] = useState([...mockSources]);
+  const [plans, setPlans] = useState([...mockPlans]);
+  const [agencies, setAgencies] = useState([...mockAgencies]);
+  const [users, setUsers] = useState([...mockUsers]);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // ===============================================
-  // 初期ロード
-  // ===============================================
-  const loadAll = async () => {
-    setIsLoading(true);
-    setLoadError('');
-    try {
-      const [s, p, a, u] = await Promise.all([
-        getSources(false),
-        getPlans(false),
-        getAgencies(false),
-        getUsers(false),
-      ]);
-      setSources(s);
-      setPlans(p);
-      setAgencies(a);
-      setUsers(u);
-    } catch (e) {
-      console.error(e);
-      setLoadError('マスタデータの取得に失敗しました。');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadAll();
-  }, []);
-
-  // ===============================================
-  // 追加モーダル
-  // ===============================================
   const handleAddClick = () => {
     setFormData({ code: '', name: '', price: '', contact: '', email: '', role: 'sales' });
     setErrorMessage('');
@@ -99,130 +49,68 @@ export default function MasterPage() {
     setShowAddModal(false);
   };
 
-  const handleSave = async () => {
-    setErrorMessage('');
-
-    // ── 担当者タブ
+  const handleSave = () => {
     if (activeTab === 'users') {
       if (!formData.name.trim() || !formData.email.trim()) {
         setErrorMessage('名前とメールアドレスは必須です。');
         return;
       }
-      setIsSaving(true);
-      try {
-        const newId = await nextUserId();
-        const { data: created, error } = await createUser({
-          id: newId,
-          name: formData.name.trim(),
-          email: formData.email.trim(),
-          role: formData.role,
-          is_active: true,
-        });
-        if (!created) {
-          setErrorMessage(`担当者の登録に失敗しました：${error ?? '不明なエラー'}`);
-          return;
-        }
-        setShowAddModal(false);
-        // DBから再読込して永続化を検証
-        await loadAll();
-      } finally {
-        setIsSaving(false);
+      const newId = `u${String(mockUsers.length + 1).padStart(3, '0')}`;
+      const nextUser: User = {
+        id: newId,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        role: formData.role,
+      };
+      mockUsers.push(nextUser);
+      setUsers([...mockUsers]);
+    } else {
+      if (!formData.code.trim() || !formData.name.trim()) {
+        setErrorMessage('コードと名称は必須です。');
+        return;
       }
-      return;
-    }
 
-    // ── 共通バリデーション
-    if (!formData.code.trim() || !formData.name.trim()) {
-      setErrorMessage('コードと名称は必須です。');
-      return;
-    }
-
-    setIsSaving(true);
-    try {
       if (activeTab === 'plans') {
         const price = Number(formData.price);
         if (Number.isNaN(price) || price <= 0) {
           setErrorMessage('価格は正しい数値を入力してください。');
           return;
         }
-        const { data: created, error } = await createPlan({
+        const nextPlan: Plan = {
           code: formData.code.trim(),
           name: formData.name.trim(),
           description: `${formData.name.trim()}の追加プラン`,
           price,
-          is_active: true,
-        });
-        if (!created) {
-          setErrorMessage(`プランの登録に失敗しました：${error ?? '不明なエラー'}`);
-          return;
-        }
+        };
+        mockPlans.push(nextPlan);
+        setPlans([...mockPlans]);
       } else if (activeTab === 'agencies') {
-        const { data: created, error } = await createAgency({
+        const nextAgency: Agency = {
           code: formData.code.trim(),
           name: formData.name.trim(),
-          contact: formData.contact.trim() || null,
-          is_active: true,
-        });
-        if (!created) {
-          setErrorMessage(`代理店の登録に失敗しました：${error ?? '不明なエラー'}`);
-          return;
-        }
+          contact: formData.contact.trim() || undefined,
+        };
+        mockAgencies.push(nextAgency);
+        setAgencies([...mockAgencies]);
       } else {
-        // sources
-        const { data: created, error } = await createSource({
+        const nextSource: Source = {
           code: formData.code.trim(),
           name: formData.name.trim(),
-          is_active: true,
-        });
-        if (!created) {
-          setErrorMessage(`流入経路の登録に失敗しました：${error ?? '不明なエラー'}`);
-          return;
-        }
+        };
+        mockSources.push(nextSource);
+        setSources([...mockSources]);
       }
-      setShowAddModal(false);
-      // DBから再読込して永続化を検証
-      await loadAll();
-    } finally {
-      setIsSaving(false);
     }
-  };
 
-  // ===============================================
-  // 削除
-  // ===============================================
-  const handleDelete = async (
-    target: TabType,
-    key: string,
-    label: string
-  ) => {
-    if (!window.confirm(`「${label}」を削除しますか？`)) return;
-    if (target === 'sources') {
-      const ok = await deleteSource(key);
-      if (ok) setSources((prev) => prev.filter((s) => s.code !== key));
-      else alert('削除に失敗しました（参照されている可能性）');
-    } else if (target === 'plans') {
-      const ok = await deletePlan(key);
-      if (ok) setPlans((prev) => prev.filter((p) => p.code !== key));
-      else alert('削除に失敗しました（参照されている可能性）');
-    } else if (target === 'agencies') {
-      const ok = await deleteAgency(key);
-      if (ok) setAgencies((prev) => prev.filter((a) => a.code !== key));
-      else alert('削除に失敗しました（参照されている可能性）');
-    } else {
-      const ok = await deleteUser(key);
-      if (ok) setUsers((prev) => prev.filter((u) => u.id !== key));
-      else alert('削除に失敗しました（参照されている可能性）');
-    }
+    setErrorMessage('');
+    setShowAddModal(false);
   };
 
   const handleFormChange = (field: string, value: string) => {
     setErrorMessage('');
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // ===============================================
-  // スタイル
-  // ===============================================
   const tabClass = (tab: TabType) =>
     `px-4 sm:px-6 py-2 rounded-full font-medium text-sm transition ${
       activeTab === tab
@@ -233,27 +121,12 @@ export default function MasterPage() {
   const inputClass =
     'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
 
-  const deleteBtnClass =
-    'text-xs px-2 py-1 rounded-md text-red-600 border border-red-200 hover:bg-red-50 transition';
-
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">マスタ管理</h1>
-        <button
-          onClick={loadAll}
-          className="text-xs text-gray-500 hover:text-gray-700 underline"
-        >
-          再読み込み
-        </button>
       </div>
-
-      {loadError && (
-        <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-          {loadError}
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 sm:gap-3">
@@ -273,184 +146,131 @@ export default function MasterPage() {
 
       {/* Content */}
       <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
-        {isLoading ? (
-          <p className="text-sm text-gray-500 py-8 text-center">読み込み中…</p>
-        ) : (
-          <>
-            {/* Tab: Sources */}
-            {activeTab === 'sources' && (
-              <div className="space-y-4">
-                <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
-                  + 追加
-                </button>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">コード</th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名称</th>
-                        <th className="px-3 sm:px-6 py-3 text-right text-xs sm:text-sm font-semibold text-gray-900">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {sources.length === 0 && (
-                        <tr><td colSpan={3} className="px-3 sm:px-6 py-6 text-center text-sm text-gray-400">データがありません</td></tr>
-                      )}
-                      {sources.map((source) => (
-                        <tr key={source.code} className="hover:bg-gray-50">
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{source.code}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{source.name}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
-                            <button
-                              onClick={() => handleDelete('sources', source.code, source.name)}
-                              className={deleteBtnClass}
-                            >
-                              削除
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
 
-            {/* Tab: Plans */}
-            {activeTab === 'plans' && (
-              <div className="space-y-4">
-                <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
-                  + 追加
-                </button>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">コード</th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名称</th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">価格</th>
-                        <th className="px-3 sm:px-6 py-3 text-right text-xs sm:text-sm font-semibold text-gray-900">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {plans.length === 0 && (
-                        <tr><td colSpan={4} className="px-3 sm:px-6 py-6 text-center text-sm text-gray-400">データがありません</td></tr>
-                      )}
-                      {plans.map((plan) => (
-                        <tr key={plan.code} className="hover:bg-gray-50">
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{plan.code}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{plan.name}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{formatCurrency(plan.price)}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
-                            <button
-                              onClick={() => handleDelete('plans', plan.code, plan.name)}
-                              className={deleteBtnClass}
-                            >
-                              削除
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+        {/* Tab: Sources */}
+        {activeTab === 'sources' && (
+          <div className="space-y-4">
+            <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
+              + 追加
+            </button>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">コード</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名称</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {sources.map((source) => (
+                    <tr key={source.code} className="hover:bg-gray-50">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{source.code}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{source.name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
-            {/* Tab: Agencies */}
-            {activeTab === 'agencies' && (
-              <div className="space-y-4">
-                <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
-                  + 追加
-                </button>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">コード</th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名称</th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">連絡先</th>
-                        <th className="px-3 sm:px-6 py-3 text-right text-xs sm:text-sm font-semibold text-gray-900">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {agencies.length === 0 && (
-                        <tr><td colSpan={4} className="px-3 sm:px-6 py-6 text-center text-sm text-gray-400">データがありません</td></tr>
-                      )}
-                      {agencies.map((agency) => (
-                        <tr key={agency.code} className="hover:bg-gray-50">
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{agency.code}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{agency.name}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{agency.contact || '-'}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
-                            <button
-                              onClick={() => handleDelete('agencies', agency.code, agency.name)}
-                              className={deleteBtnClass}
-                            >
-                              削除
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+        {/* Tab: Plans */}
+        {activeTab === 'plans' && (
+          <div className="space-y-4">
+            <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
+              + 追加
+            </button>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">コード</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名称</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">価格</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {plans.map((plan) => (
+                    <tr key={plan.code} className="hover:bg-gray-50">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{plan.code}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{plan.name}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{formatCurrency(plan.price)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
-            {/* Tab: Users (担当者マスタ) */}
-            {activeTab === 'users' && (
-              <div className="space-y-4">
-                <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
-                  + 担当者を追加
-                </button>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">ID</th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名前</th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">メールアドレス</th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">ロール</th>
-                        <th className="px-3 sm:px-6 py-3 text-right text-xs sm:text-sm font-semibold text-gray-900">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {users.length === 0 && (
-                        <tr><td colSpan={5} className="px-3 sm:px-6 py-6 text-center text-sm text-gray-400">データがありません</td></tr>
-                      )}
-                      {users.map((user) => (
-                        <tr key={user.id} className="hover:bg-gray-50">
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-500">{user.id}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{user.name}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{user.email}</td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm">
-                            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                              user.role === 'manager'
-                                ? 'bg-purple-100 text-purple-700'
-                                : user.role === 'sales'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}>
-                              {roleLabels[user.role]}
-                            </span>
-                          </td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
-                            <button
-                              onClick={() => handleDelete('users', user.id, user.name)}
-                              className={deleteBtnClass}
-                            >
-                              削除
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </>
+        {/* Tab: Agencies */}
+        {activeTab === 'agencies' && (
+          <div className="space-y-4">
+            <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
+              + 追加
+            </button>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">コード</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名称</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">連絡先</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {agencies.map((agency) => (
+                    <tr key={agency.code} className="hover:bg-gray-50">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{agency.code}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{agency.name}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{agency.contact || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Tab: Users (担当者マスタ) */}
+        {activeTab === 'users' && (
+          <div className="space-y-4">
+            <button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm">
+              + 担当者を追加
+            </button>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">ID</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">名前</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">メールアドレス</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900">ロール</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {users.map((user) => (
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-500">{user.id}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{user.name}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{user.email}</td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm">
+                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                          user.role === 'manager'
+                            ? 'bg-purple-100 text-purple-700'
+                            : user.role === 'sales'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {roleLabels[user.role]}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
 
@@ -564,17 +384,15 @@ export default function MasterPage() {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleCloseModal}
-                disabled={isSaving}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium text-sm disabled:opacity-50"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium text-sm"
               >
                 キャンセル
               </button>
               <button
                 onClick={handleSave}
-                disabled={isSaving}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm disabled:opacity-50"
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
               >
-                {isSaving ? '保存中…' : '保存'}
+                保存
               </button>
             </div>
           </div>

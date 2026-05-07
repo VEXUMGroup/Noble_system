@@ -14,6 +14,7 @@ import {
   getDaysUntil,
 } from '@/lib/mock-data';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { GoogleCalendarPanel } from '@/components/GoogleCalendarPanel';
 
 // Icons
 const AlertCircle = ({ className }: { className?: string }) => (
@@ -168,6 +169,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">ダッシュボード</h1>
+
+      <GoogleCalendarPanel />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">

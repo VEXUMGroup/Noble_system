@@ -1,44 +1,46 @@
 import { redirect } from 'next/navigation';
-import { getAuthErrorMessage, getSessionState } from '@/lib/auth/access';
 import { LoginCard } from '@/components/auth/LoginCard';
-import { hasSupabaseCredentials } from '@/lib/supabase-auth/config';
-import { createServerSupabaseClient } from '@/lib/supabase-auth/server';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-interface LoginPageProps {
+type LoginPageProps = {
   searchParams?: {
-    error?: string | string[];
+    error?: string;
+    next?: string;
   };
+};
+
+function sanitizeNextPath(nextPath?: string) {
+  if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//')) {
+    return '/dashboard';
+  }
+
+  return nextPath;
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const configMissing = !hasSupabaseCredentials();
-  const errorCode = readSearchParam(searchParams?.error);
+  const supabase = createSupabaseServerClient();
+  const nextPath = sanitizeNextPath(searchParams?.next);
 
-  if (!configMissing) {
-    const supabase = createServerSupabaseClient();
-    const sessionState = await getSessionState(supabase);
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-    if (sessionState.status === 'authenticated') {
-      redirect('/dashboard');
-    }
+  if (session?.user?.id) {
+    const { data: member } = await supabase
+      .from('m_users')
+      .select('id, is_active')
+      .eq('auth_user_id', session.user.id)
+      .eq('is_active', true)
+      .maybeSingle();
 
-    if (sessionState.status === 'unauthorized') {
-      redirect('/auth/signout?reason=user_not_authorized');
+    if (member) {
+      redirect(nextPath);
     }
   }
 
   return (
-    <LoginCard
-      configMissing={configMissing}
-      errorMessage={getAuthErrorMessage(errorCode)}
-    />
+    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center p-4">
+      <LoginCard nextPath={nextPath} initialError={searchParams?.error ?? null} />
+    </div>
   );
-}
-
-function readSearchParam(param?: string | string[]) {
-  if (Array.isArray(param)) {
-    return param[0];
-  }
-
-  return param ?? null;
 }

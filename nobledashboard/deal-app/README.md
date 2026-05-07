@@ -27,32 +27,6 @@ npm run dev
 
 ブラウザで `http://127.0.0.1:3000` を開きます。
 
-## Googleログイン設定
-
-Googleログインを使う場合は、`.env.local` に以下を設定します。
-
-```sh
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
-
-`NEXT_PUBLIC_APP_URL` は OAuth コールバックURLのベースになります。`3003` で起動する場合は `http://localhost:3003` に合わせてください。
-
-Supabase ダッシュボード側でも以下が必要です。
-
-```txt
-Authentication > Providers > Google を有効化
-Authentication > URL Configuration に /auth/callback を許可
-```
-
-例:
-
-```txt
-http://localhost:3000/auth/callback
-http://localhost:3003/auth/callback
-```
-
 ## Node 20 に切り替える方法
 
 ### nvm を使う（推奨）
@@ -104,3 +78,4 @@ npm install
 cd nobledashboard/deal-app
 npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
+

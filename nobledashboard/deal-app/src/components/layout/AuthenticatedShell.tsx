@@ -1,26 +1,30 @@
 'use client';
 
 import { useState } from 'react';
-import type { AuthenticatedAppUser } from '@/lib/auth/access';
 import { Sidebar } from '@/components/layout/Sidebar';
 
-interface AuthenticatedShellProps {
+type AuthenticatedShellProps = {
   children: React.ReactNode;
-  user: AuthenticatedAppUser;
-}
+  currentUser: {
+    id: string;
+    name: string;
+    email: string;
+    role: 'sales' | 'admin_staff' | 'manager';
+  };
+};
 
 export function AuthenticatedShell({
   children,
-  user,
+  currentUser,
 }: AuthenticatedShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar
+        currentUser={currentUser}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        user={user}
       />
 
       <button
@@ -33,9 +37,7 @@ export function AuthenticatedShell({
         </svg>
       </button>
 
-      <main className="md:ml-64 flex-1 p-4 pt-16 md:p-8 md:pt-8">
-        {children}
-      </main>
+      <main className="md:ml-64 flex-1 p-4 pt-16 md:p-8 md:pt-8">{children}</main>
     </div>
   );
 }
