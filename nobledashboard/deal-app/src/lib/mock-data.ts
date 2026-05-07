@@ -263,34 +263,38 @@ export const paymentMethodOptions = [
   { value: 'stripe', label: 'Stripe自動決済' },
 ];
 
-export function getUserName(userId?: string): string {
-  return mockUsers.find((u) => u.id === userId)?.name ?? userId ?? '-';
+export function getUserName(userId?: string | null): string {
+  if (!userId) return '-';
+  return mockUsers.find((u) => u.id === userId)?.name ?? userId;
 }
 
-export function getPlanName(code?: string): string {
-  return mockPlans.find((p) => p.code === code)?.name ?? code ?? '-';
+export function getPlanName(code?: string | null): string {
+  if (!code) return '-';
+  return mockPlans.find((p) => p.code === code)?.name ?? code;
 }
 
-export function getAgencyName(code?: string): string {
-  return mockAgencies.find((a) => a.code === code)?.name ?? code ?? '-';
+export function getAgencyName(code?: string | null): string {
+  if (!code) return '-';
+  return mockAgencies.find((a) => a.code === code)?.name ?? code;
 }
 
-export function getSourceName(code?: string): string {
-  return mockSources.find((s) => s.code === code)?.name ?? code ?? '-';
+export function getSourceName(code?: string | null): string {
+  if (!code) return '-';
+  return mockSources.find((s) => s.code === code)?.name ?? code;
 }
 
-export function formatCurrency(amount?: number): string {
+export function formatCurrency(amount?: number | null): string {
   return typeof amount === 'number' ? amount.toLocaleString('ja-JP', { style: 'currency', currency: 'JPY' }) : '-';
 }
 
-export function formatDate(dateStr?: string): string {
+export function formatDate(dateStr?: string | null): string {
   if (!dateStr) return '-';
   const date = new Date(dateStr);
   if (Number.isNaN(date.getTime())) return dateStr;
   return date.toLocaleDateString('ja-JP');
 }
 
-export function getDaysUntil(dateStr?: string): number {
+export function getDaysUntil(dateStr?: string | null): number {
   if (!dateStr) return 0;
   const today = new Date('2026-04-16T00:00:00+09:00');
   const target = new Date(`${dateStr}T00:00:00+09:00`);

@@ -1,15 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { RESULT_STATUS_TO_DEAL_STATUS } from '@/lib/types';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import {
-  mockDeals,
-  mockUsers,
-  mockSources,
-  mockAgencies,
   formatDate,
   getAgencyName,
   getSourceName,
@@ -22,6 +18,8 @@ import {
   hrProposalOptions,
   hrFeasibilityOptions,
 } from '@/lib/mock-data';
+import { useMasterData } from '@/lib/useMasterData';
+import { getDeal, updateDeal, type DealRow } from '@/lib/supabase';
 
 interface DealDetailPageProps {
   params: { id: string };
@@ -29,16 +27,17 @@ interface DealDetailPageProps {
 
 export default function DealDetailPage({ params }: DealDetailPageProps) {
   const router = useRouter();
-  const deal = mockDeals.find((item) => item.id === params.id);
+  const { sources: dbSources, agencies: dbAgencies, users: dbUsers } = useMasterData();
 
-  // ローカルでステータスを管理（モックデータ変更をUIに即反映するため）
-  const [dealStatus, setDealStatus] = useState(deal?.status ?? 'NEW');
+  const [deal, setDeal] = useState<DealRow | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  // 面談記録フォームの状態（NEW のとき表示）
+  // 面談記録フォーム
   const [interviewStatus, setInterviewStatus] = useState('');
   const [interviewError, setInterviewError] = useState('');
 
-  // 結果入力フォームの状態（INTERVIEWED のとき表示）
+  // 結果入力フォーム
   const [resultStatus, setResultStatus] = useState('');
   const [consideringReason, setConsideringReason] = useState('');
   const [consideringComment, setConsideringComment] = useState('');
@@ -54,71 +53,118 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [submitError, setSubmitError] = useState('');
 
-  // ── 顧客詳細編集フォームの状態
+  // 顧客詳細編集
   const [isEditing, setIsEditing] = useState(false);
-  const [editCustomerName, setEditCustomerName] = useState(deal?.customer_name ?? '');
-  const [editAssignedTo, setEditAssignedTo] = useState(deal?.assigned_to ?? '');
-  const [editDealDate, setEditDealDate] = useState(deal?.deal_date ?? '');
-  const [editRetirementDate, setEditRetirementDate] = useState(deal?.retirement_date ?? '');
-  const [editSourceCode, setEditSourceCode] = useState(deal?.source_code ?? deal?.source ?? '');
-  const [editAgencyCode, setEditAgencyCode] = useState(deal?.agency_code ?? '');
-  const [editMemo, setEditMemo] = useState(deal?.memo ?? '');
+  const [editCustomerName, setEditCustomerName] = useState('');
+  const [editAssignedTo, setEditAssignedTo] = useState('');
+  const [editDealDate, setEditDealDate] = useState('');
+  const [editRetirementDate, setEditRetirementDate] = useState('');
+  const [editSourceCode, setEditSourceCode] = useState('');
+  const [editAgencyCode, setEditAgencyCode] = useState('');
+  const [editMemo, setEditMemo] = useState('');
+
+  // ── 初回ロード
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setIsLoading(true);
+      const row = await getDeal(params.id);
+      if (cancelled) return;
+      if (!row) {
+        setLoadError('商談が見つかりません');
+        setDeal(null);
+      } else {
+        setDeal(row);
+        setEditCustomerName(row.customer_name);
+        setEditAssignedTo(row.assigned_to ?? '');
+        setEditDealDate(row.deal_date ?? '');
+        setEditRetirementDate(row.retirement_date ?? '');
+        setEditSourceCode(row.source ?? '');
+        setEditAgencyCode(row.agency_code ?? '');
+        setEditMemo(row.memo ?? '');
+      }
+      setIsLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [params.id]);
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-8">
+        <p className="text-gray-500">読み込み中…</p>
+      </div>
+    );
+  }
 
   if (!deal) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">商談詳細</h1>
-        <p className="text-gray-600 mb-6">商談が見つかりません。</p>
+        <p className="text-gray-600 mb-6">{loadError || '商談が見つかりません。'}</p>
         <Link href="/deals" className="text-blue-600 hover:text-blue-700">商談一覧へ戻る</Link>
       </div>
     );
   }
 
-  // ── 面談記録を保存（NEW → INTERVIEWED or NEW のまま）
-  const handleSaveInterview = () => {
+  const dealStatus = deal.status ?? 'NEW';
+
+  // ── 面談記録を保存
+  const handleSaveInterview = async () => {
     if (!interviewStatus) {
       setInterviewError('面談ステータスを選択してください');
       return;
     }
     const newStatus = interviewStatus === '面談実施' ? 'INTERVIEWED' : 'NEW';
-    deal.interview_status = interviewStatus;
-    deal.status = newStatus;
-    deal.updated_at = new Date().toISOString();
-    setDealStatus(newStatus);
+    const { data, error } = await updateDeal(deal.id, {
+      interview_status: interviewStatus,
+      status: newStatus,
+    });
+    if (!data) {
+      setSubmitError(`保存に失敗しました：${error ?? '不明'}`);
+      return;
+    }
+    setDeal(data);
     setInterviewError('');
     setSuccessMessage('面談記録を保存しました');
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 2500);
   };
 
-  // ── 結果を保存（INTERVIEWED / CONSIDERING → 成約/検討/対象外/失注）
-  const handleSaveResult = () => {
+  // ── 結果を保存
+  const handleSaveResult = async () => {
     if (!resultStatus) {
       setResultError('結果ステータスを選択してください');
       return;
     }
     const mappedStatus = RESULT_STATUS_TO_DEAL_STATUS[resultStatus];
-    deal.result_status = resultStatus;
-    deal.status = mappedStatus;
-    deal.hr_proposal = hrProposal || undefined;
-    deal.hr_feasibility = hrFeasibility || undefined;
-    deal.hr_target_28m = hrTarget28m || undefined;
-    deal.next_action_date = nextActionDate || undefined;
+    const patch: Partial<DealRow> = {
+      result_status: resultStatus,
+      status: mappedStatus,
+      hr_proposal: hrProposal || null,
+      hr_feasibility: hrFeasibility || null,
+      hr_target_28m: hrTarget28m,
+      next_action_date: nextActionDate || null,
+    };
     if (resultStatus === '検討') {
-      deal.considering_reason = consideringReason || undefined;
-      deal.considering_reason_comment = consideringComment || undefined;
+      patch.considering_reason = consideringReason || null;
+      patch.considering_reason_comment = consideringComment || null;
     }
     if (resultStatus === '対象外') {
-      deal.out_of_scope_reason = outOfScopeReason || undefined;
-      deal.out_of_scope_reason_comment = outOfScopeComment || undefined;
+      patch.out_of_scope_reason = outOfScopeReason || null;
+      patch.out_of_scope_reason_comment = outOfScopeComment || null;
     }
     if (resultStatus === '失注') {
-      deal.lost_reason = lostReason || undefined;
-      deal.lost_reason_comment = lostComment || undefined;
+      patch.lost_reason = lostReason || null;
+      patch.lost_reason_comment = lostComment || null;
     }
-    deal.updated_at = new Date().toISOString();
-    setDealStatus(mappedStatus);
+    const { data, error } = await updateDeal(deal.id, patch);
+    if (!data) {
+      setSubmitError(`保存に失敗しました：${error ?? '不明'}`);
+      return;
+    }
+    setDeal(data);
     setResultError('');
     setSuccessMessage(`結果「${resultStatus}」を保存しました`);
     setShowSuccess(true);
@@ -131,30 +177,35 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   };
 
   // ── 顧客詳細を保存
-  const handleSaveCustomer = () => {
+  const handleSaveCustomer = async () => {
     if (!editCustomerName.trim()) return;
-    deal.customer_name = editCustomerName.trim();
-    deal.assigned_to = editAssignedTo;
-    deal.deal_date = editDealDate;
-    deal.retirement_date = editRetirementDate;
-    deal.source_code = editSourceCode;
-    deal.source = editSourceCode;
-    deal.agency_code = editAgencyCode;
-    deal.memo = editMemo;
-    deal.updated_at = new Date().toISOString();
+    const { data, error } = await updateDeal(deal.id, {
+      customer_name: editCustomerName.trim(),
+      assigned_to: editAssignedTo,
+      deal_date: editDealDate,
+      retirement_date: editRetirementDate || null,
+      source: editSourceCode || null,
+      agency_code: editAgencyCode || null,
+      memo: editMemo || null,
+    });
+    if (!data) {
+      setSubmitError(`保存に失敗しました：${error ?? '不明'}`);
+      return;
+    }
+    setDeal(data);
     setIsEditing(false);
     setSuccessMessage('顧客詳細を保存しました');
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 2500);
   };
 
-  // ── 編集キャンセル（元の値に戻す）
+  // ── 編集キャンセル
   const handleCancelEdit = () => {
     setEditCustomerName(deal.customer_name);
-    setEditAssignedTo(deal.assigned_to);
-    setEditDealDate(deal.deal_date);
-    setEditRetirementDate(deal.retirement_date);
-    setEditSourceCode(deal.source_code ?? deal.source ?? '');
+    setEditAssignedTo(deal.assigned_to ?? '');
+    setEditDealDate(deal.deal_date ?? '');
+    setEditRetirementDate(deal.retirement_date ?? '');
+    setEditSourceCode(deal.source ?? '');
     setEditAgencyCode(deal.agency_code ?? '');
     setEditMemo(deal.memo ?? '');
     setIsEditing(false);
@@ -181,6 +232,11 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       {showSuccess && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <p className="text-green-800 font-medium">✓ {successMessage}</p>
+        </div>
+      )}
+      {submitError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-700 text-sm">{submitError}</p>
         </div>
       )}
 
@@ -217,14 +273,13 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         </div>
 
         {isEditing ? (
-          /* ── 編集モード ── */
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">担当者</label>
                 <select value={editAssignedTo} onChange={(e) => setEditAssignedTo(e.target.value)} className={inputClass}>
                   <option value="">-- 未選択 --</option>
-                  {mockUsers.map((u) => (
+                  {dbUsers.map((u) => (
                     <option key={u.id} value={u.id}>{u.name}</option>
                   ))}
                 </select>
@@ -241,7 +296,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 <label className="block text-xs font-semibold text-gray-500 mb-1">流入経路</label>
                 <select value={editSourceCode} onChange={(e) => setEditSourceCode(e.target.value)} className={inputClass}>
                   <option value="">-- 未選択 --</option>
-                  {mockSources.map((s) => (
+                  {dbSources.map((s) => (
                     <option key={s.code} value={s.code}>{s.name}</option>
                   ))}
                 </select>
@@ -250,7 +305,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 <label className="block text-xs font-semibold text-gray-500 mb-1">代理店</label>
                 <select value={editAgencyCode} onChange={(e) => setEditAgencyCode(e.target.value)} className={inputClass}>
                   <option value="">-- なし --</option>
-                  {mockAgencies.map((a) => (
+                  {dbAgencies.map((a) => (
                     <option key={a.code} value={a.code}>{a.name}</option>
                   ))}
                 </select>
@@ -277,17 +332,16 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
             </div>
           </div>
         ) : (
-          /* ── 表示モード ── */
           <dl className="divide-y divide-gray-100">
             {[
               ['担当者', getUserName(deal.assigned_to)],
               ['商談日', formatDate(deal.deal_date)],
-              ['退職予定日', deal.retirement_date],
-              ['流入経路', getSourceName(deal.source_code || deal.source)],
+              ['退職予定日', formatDate(deal.retirement_date)],
+              ['流入経路', getSourceName(deal.source)],
               ['代理店', getAgencyName(deal.agency_code)],
               ['メモ', deal.memo || '-'],
             ].map(([label, value]) => (
-              <div key={label} className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
+              <div key={label as string} className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
                 <dt className="text-sm font-medium text-gray-500">{label}</dt>
                 <dd className="sm:col-span-2 text-sm text-gray-900">{value}</dd>
               </div>
@@ -318,7 +372,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
           </dl>
         )}
 
-        {/* 成約以降のアクションリンク */}
         {!isEditing && isContractedOrLater && (
           <div className="flex flex-wrap gap-3 mt-5 pt-4 border-t border-gray-100">
             <Link
@@ -339,7 +392,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         )}
       </div>
 
-      {/* ── STEP 1: 面談記録（NEW のとき） ── */}
+      {/* STEP 1: 面談記録 */}
       {dealStatus === 'NEW' && (
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-purple-400">
           <h2 className="text-base font-bold text-gray-900 mb-1">面談結果を記録する</h2>
@@ -373,7 +426,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         </div>
       )}
 
-      {/* ── STEP 2: 結果入力（INTERVIEWED / CONSIDERING のとき） ── */}
+      {/* STEP 2: 結果入力 */}
       {(dealStatus === 'INTERVIEWED' || dealStatus === 'CONSIDERING') && (
         <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
           <h2 className="text-base font-bold text-gray-900 mb-1">
@@ -386,7 +439,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
           </p>
 
           <div className="space-y-5">
-            {/* 結果ステータス */}
             <div className="max-w-sm">
               <label className="block text-sm font-semibold text-gray-700 mb-1">
                 結果 <span className="text-red-500">*</span>
@@ -407,7 +459,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
               {resultError && <p className="text-red-500 text-xs mt-1">{resultError}</p>}
             </div>
 
-            {/* 検討理由 */}
             {resultStatus === '検討' && (
               <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg space-y-3 max-w-lg">
                 <p className="text-xs font-bold text-yellow-800">検討理由</p>
@@ -438,7 +489,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
               </div>
             )}
 
-            {/* 対象外理由 */}
             {resultStatus === '対象外' && (
               <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3 max-w-lg">
                 <p className="text-xs font-bold text-gray-700">対象外理由</p>
@@ -460,7 +510,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
               </div>
             )}
 
-            {/* 失注理由 */}
             {resultStatus === '失注' && (
               <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg space-y-3 max-w-lg">
                 <p className="text-xs font-bold text-rose-800">失注理由</p>
@@ -482,7 +531,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
               </div>
             )}
 
-            {/* 人材提案（結果選択後に表示） */}
             {resultStatus && (
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg max-w-lg">
                 <p className="text-xs font-bold text-blue-800 mb-3">人材提案</p>

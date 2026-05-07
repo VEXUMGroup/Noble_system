@@ -1,25 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { STATUS_CONFIG } from '@/lib/types';
 import {
-  mockDeals,
-  mockUsers,
-  mockSources,
-  mockAgencies,
   getUserName,
   getSourceName,
   getAgencyName,
   formatDate,
   getDaysUntil,
-  type Deal,
 } from '@/lib/mock-data';
+import { useMasterData } from '@/lib/useMasterData';
+import { getDeals, type DealRow } from '@/lib/supabase';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 
 export default function DealsPage() {
   const router = useRouter();
+  const { sources: dbSources, agencies: dbAgencies, users: dbUsers } = useMasterData();
 
   // Filter states
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -33,8 +31,25 @@ export default function DealsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
-  // Apply filters
-  const filteredDeals = mockDeals.filter((deal) => {
+  // Server data
+  const [allDeals, setAllDeals] = useState<DealRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setIsLoading(true);
+      const rows = await getDeals();
+      if (!cancelled) {
+        setAllDeals(rows);
+        setIsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Apply filters (client side)
+  const filteredDeals = allDeals.filter((deal) => {
     if (statusFilter && deal.status !== statusFilter) return false;
     if (assignedToFilter && deal.assigned_to !== assignedToFilter) return false;
     if (dealDateFromFilter && new Date(deal.deal_date) < new Date(dealDateFromFilter)) return false;
@@ -109,7 +124,7 @@ export default function DealsPage() {
               className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">すべて</option>
-              {mockUsers.map((user) => (
+              {dbUsers.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.name}
                 </option>
@@ -148,7 +163,7 @@ export default function DealsPage() {
               className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">すべて</option>
-              {mockAgencies.map((agency) => (
+              {dbAgencies.map((agency) => (
                 <option key={agency.code} value={agency.code}>
                   {agency.name}
                 </option>
@@ -165,7 +180,7 @@ export default function DealsPage() {
               className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">すべて</option>
-              {mockSources.map((source) => (
+              {dbSources.map((source) => (
                 <option key={source.code} value={source.code}>
                   {source.name}
                 </option>

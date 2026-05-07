@@ -1,34 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  STATUS_CONFIG,
-  VALID_TRANSITIONS,
-  type DealStatus,
-} from '@/lib/types';
-import {
-  mockDeals,
-  mockUsers,
-  mockPlans,
-  mockSources,
-  mockAgencies,
-  mockNotifications,
   getUserName,
   getPlanName,
   getAgencyName,
   getSourceName,
   formatCurrency,
   formatDate,
-  getDaysUntil,
-  currentUser,
-  type Deal,
-  type Plan,
-  type Source,
-  type Agency,
 } from '@/lib/mock-data';
-import { StatusBadge } from '@/components/ui/StatusBadge';
+import { getDeal, updateDeal, type DealRow } from '@/lib/supabase';
 
 interface ApprovalPageProps {
   params: {
@@ -38,11 +21,28 @@ interface ApprovalPageProps {
 
 export default function ApprovalPage({ params }: ApprovalPageProps) {
   const router = useRouter();
-  const deal = mockDeals.find((d) => d.id === params.id);
+  const [deal, setDeal] = useState<DealRow | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const row = await getDeal(params.id);
+      if (cancelled) return;
+      setDeal(row);
+      setIsLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [params.id]);
+
+  if (isLoading) {
+    return <div className="bg-white rounded-xl shadow-sm p-8"><p className="text-gray-500">読み込み中…</p></div>;
+  }
 
   if (!deal) {
     return (
@@ -56,10 +56,12 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
     );
   }
 
-  // 仕様書 5.4: 「承認」ボタン: ステータスを「事務承認済」に更新
-  const handleApprove = () => {
-    deal.status = 'APPROVED';
-    deal.updated_at = new Date().toISOString();
+  const handleApprove = async () => {
+    const { data, error } = await updateDeal(deal.id, { status: 'APPROVED' });
+    if (!data) {
+      setErrorMessage(`承認に失敗しました：${error ?? '不明'}`);
+      return;
+    }
     setSuccessMessage('承認が完了しました。締結工程へ進行できます。');
     setShowSuccess(true);
     setTimeout(() => {
@@ -67,17 +69,20 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
     }, 1500);
   };
 
-  // 仕様書 5.4: 「差し戻し」ボタン: コメント入力後、前工程（成約）へ差し戻し
-  // 仕様書 8.4: 詳細入力済 → 成約（差し戻し）
-  const handleReject = () => {
+  const handleReject = async () => {
     if (!rejectComment.trim()) {
       alert('差し戻しコメントを入力してください');
       return;
     }
-    deal.status = 'CONTRACTED';
-    deal.memo = rejectComment.trim();
-    deal.updated_at = new Date().toISOString();
-    setSuccessMessage('「成約」ステータスに差し戻しました。営業担当へ承認依頼通知を送信しました。');
+    const { data, error } = await updateDeal(deal.id, {
+      status: 'CONTRACTED',
+      memo: rejectComment.trim(),
+    });
+    if (!data) {
+      setErrorMessage(`差し戻しに失敗しました：${error ?? '不明'}`);
+      return;
+    }
+    setSuccessMessage('「成約」ステータスに差し戻しました。');
     setShowSuccess(true);
     setTimeout(() => {
       router.push(`/deals/${params.id}`);
@@ -224,6 +229,12 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
           <div className="bg-white rounded-lg p-8 text-center max-w-sm">
             <p className="text-lg font-bold text-gray-800">{successMessage}</p>
           </div>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-700 text-sm">{errorMessage}</p>
         </div>
       )}
     </div>
