@@ -93,7 +93,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setEditAssignedTo(deal.assigned_to ?? '');
     setEditDealDate(deal.deal_date ?? '');
     setEditRetirementDate(deal.retirement_date ?? '');
-    setEditSourceCode(deal.source_code ?? deal.source ?? '');
+    setEditSourceCode(deal.source ?? '');
     setEditAgencyCode(deal.agency_code ?? '');
     setEditMemo(deal.memo ?? '');
   }, [deal]);
@@ -202,20 +202,50 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
   // ── 顧客詳細を保存
   const handleSaveCustomer = () => {
-    if (!editCustomerName.trim()) return;
-    deal.customer_name = editCustomerName.trim();
-    deal.assigned_to = editAssignedTo;
-    deal.deal_date = editDealDate;
-    deal.retirement_date = editRetirementDate;
-    deal.source_code = editSourceCode;
-    deal.source = editSourceCode;
-    deal.agency_code = editAgencyCode;
-    deal.memo = editMemo;
-    deal.updated_at = new Date().toISOString();
-    setIsEditing(false);
-    setSuccessMessage('顧客詳細を保存しました');
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 2500);
+    if (!editCustomerName.trim()) {
+      setInterviewError('顧客名を入力してください');
+      return;
+    }
+    if (!editAssignedTo) {
+      setInterviewError('担当者を選択してください');
+      return;
+    }
+    if (!editDealDate) {
+      setInterviewError('商談日を選択してください');
+      return;
+    }
+    (async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const payload = {
+          customer_name: editCustomerName.trim(),
+          assigned_to: editAssignedTo,
+          deal_date: editDealDate,
+          retirement_date: editRetirementDate || null,
+          source: editSourceCode || null,
+          agency_code: editAgencyCode || null,
+          memo: editMemo || null,
+          updated_at: new Date().toISOString(),
+        };
+        console.log('Saving deal with payload:', payload);
+        const { data, error } = await supabase.from('deals').update(payload).eq('id', deal.id).select();
+        if (error) {
+          console.error('Update error:', error);
+          setInterviewError(`保存に失敗しました: ${error.code} - ${error.message}`);
+          return;
+        }
+        console.log('Update successful:', data);
+        setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
+        setIsEditing(false);
+        setInterviewError('');
+        setSuccessMessage('顧客詳細を保存しました');
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 2500);
+      } catch (err) {
+        console.error('Exception during save:', err);
+        setInterviewError(`保存中にエラーが発生しました: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    })();
   };
 
   // ── 編集キャンセル（元の値に戻す）
@@ -224,7 +254,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setEditAssignedTo(deal.assigned_to);
     setEditDealDate(deal.deal_date);
     setEditRetirementDate(deal.retirement_date);
-    setEditSourceCode(deal.source_code ?? deal.source ?? '');
+    setEditSourceCode(deal.source ?? '');
     setEditAgencyCode(deal.agency_code ?? '');
     setEditMemo(deal.memo ?? '');
     setIsEditing(false);
@@ -353,7 +383,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
               ['担当者', users.find(u => u.id === deal.assigned_to)?.name ?? deal.assigned_to ?? '-'],
               ['商談日', formatDate(deal.deal_date)],
               ['退職予定日', deal.retirement_date],
-              ['流入経路', sources.find(s => s.code === (deal.source_code || deal.source))?.name ?? deal.source ?? '-'],
+              ['流入経路', sources.find(s => s.code === (deal.source))?.name ?? deal.source ?? '-'],
               ['代理店', agencies.find(a => a.code === deal.agency_code)?.name ?? deal.agency_code ?? '-'],
               ['メモ', deal.memo || '-'],
             ].map(([label, value]) => (

@@ -217,3 +217,14 @@ export async function getStatuses(onlyActive = true) {
     return [];
   }
 }
+
+export async function signOut() {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const { error } = await supabase.auth.signOut();
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    console.error('Error signing out:', error);
+    throw error;
+  }
+}

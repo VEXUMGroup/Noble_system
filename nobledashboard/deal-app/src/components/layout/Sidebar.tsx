@@ -5,7 +5,7 @@ import Link from 'next/link';
 
 const navGroups = [
   {
-    label: '商談管理',
+    label: '商談一覧',
     href: '/deals',
     icon: (
       <svg
@@ -22,10 +22,25 @@ const navGroups = [
         />
       </svg>
     ),
-    children: [
-      { label: '商談一覧', href: '/deals' },
-      { label: '検討管理', href: '/review' },
-    ],
+  },
+  {
+    label: '検討管理',
+    href: '/review',
+    icon: (
+      <svg
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+        />
+      </svg>
+    ),
   },
   {
     label: '顧客管理',
@@ -103,6 +118,14 @@ export function Sidebar({ currentUser, isOpen = false, onClose }: SidebarProps) 
     return roleMap[role] || role;
   };
 
+  // 営業部には支払い管理とマスタ管理を非表示
+  const filteredNavGroups = navGroups.filter((group) => {
+    if (currentUser.role === 'sales') {
+      return group.href !== '/payments' && group.href !== '/master';
+    }
+    return true;
+  });
+
   const handleLinkClick = () => {
     // モバイルでリンクをクリックしたらサイドバーを閉じる
     if (onClose) {
@@ -155,7 +178,7 @@ export function Sidebar({ currentUser, isOpen = false, onClose }: SidebarProps) 
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-          {navGroups.map((group) => {
+          {filteredNavGroups.map((group) => {
             const isActive =
               pathname === group.href ||
               pathname.startsWith(`${group.href}/`) ||

@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { getDeal } from '@/lib/supabase';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useMasterData } from '@/lib/useMasterData';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 
 interface ApprovalPageProps {
   params: {
@@ -22,11 +23,15 @@ interface ApprovalPageProps {
 
 export default function ApprovalPage({ params }: ApprovalPageProps) {
   const router = useRouter();
+  const { role } = useCurrentUser();
   const { users, plans, sources, agencies } = useMasterData();
   const getUserName = (id: string) => users.find((u) => u.id === id)?.name ?? id ?? '-';
   const getPlanName = (code?: string) => plans.find((p) => p.code === code)?.name ?? code ?? '-';
   const getAgencyName = (code?: string) => agencies.find((a) => a.code === code)?.name ?? code ?? '-';
   const getSourceName = (code?: string) => sources.find((s) => s.code === code)?.name ?? code ?? '-';
+
+  // 営業部は閲覧のみ
+  const isReadOnly = role === 'sales';
 
   const [deal, setDeal] = useState<Record<string, any> | null>(null);
   const [dealLoading, setDealLoading] = useState(true);
@@ -70,6 +75,10 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
 
   // 仕様書 5.4: 「承認」ボタン: ステータスを「事務承認済」に更新
   const handleApprove = () => {
+    if (isReadOnly) {
+      alert('営業部は承認操作ができません。管理者にお問い合わせください。');
+      return;
+    }
     (async () => {
       const supabase = createSupabaseBrowserClient();
       const payload = { status: 'APPROVED', updated_at: new Date().toISOString() };
@@ -90,6 +99,10 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
   // 仕様書 5.4: 「差し戻し」ボタン: コメント入力後、前工程（成約）へ差し戻し
   // 仕様書 8.4: 詳細入力済 → 成約（差し戻し）
   const handleReject = () => {
+    if (isReadOnly) {
+      alert('営業部は差し戻し操作ができません。管理者にお問い合わせください。');
+      return;
+    }
     if (!rejectComment.trim()) {
       alert('差し戻しコメントを入力してください');
       return;
@@ -133,6 +146,12 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">事務承認</h1>
         <p className="text-sm text-gray-500 mt-1">ID: {deal.id} / {deal.customer_name}</p>
       </div>
+
+      {isReadOnly && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <p className="text-amber-800 font-medium">⚠️ 営業部は閲覧のみです。承認・差し戻しは管理者のみが可能です。</p>
+        </div>
+      )}
 
       {/* 仕様書 5.4: 案件の全情報を読み取り専用で表示 */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -202,14 +221,16 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
         {!showRejectForm ? (
           <div className="flex flex-col sm:flex-row gap-3">
             <button
+              disabled={isReadOnly}
               onClick={handleApprove}
-              className="flex-1 sm:flex-none px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+              className="flex-1 sm:flex-none px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed"
             >
               承認
             </button>
             <button
+              disabled={isReadOnly}
               onClick={() => setShowRejectForm(true)}
-              className="flex-1 sm:flex-none px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+              className="flex-1 sm:flex-none px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed"
             >
               差し戻し
             </button>

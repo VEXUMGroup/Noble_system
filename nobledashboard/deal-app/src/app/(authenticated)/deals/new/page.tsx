@@ -26,6 +26,8 @@ export default function NewDealPage() {
   const router = useRouter();
   const { users, sources, statuses } = useMasterData();
   const resultStatuses = statuses.filter(s => s.code.startsWith('RS_'));
+
+
   const [formData, setFormData] = useState<FormData>({
     customer_name: '',
     assigned_to: '',
@@ -76,8 +78,7 @@ export default function NewDealPage() {
       assigned_to: formData.assigned_to,
       deal_date: formData.deal_date,
       source: formData.source,
-      source_code: formData.source,
-      status: 'NEW',
+      status: 'NEW', // マイグレーション 003 実行後は NULL 許容に変更予定
       retirement_date: formData.retirement_date,
       result_status: formData.result_status || undefined,
       prospect_level: formData.prospect_level || undefined,
@@ -87,6 +88,8 @@ export default function NewDealPage() {
       next_action_date: formData.next_action_date || undefined,
       recording_url: formData.recording_url || undefined,
       remarks: formData.remarks || undefined,
+      created_by: 'USR001', // System user (暫定：マイグレーション 003 の NOT NULL DROP 実行待機中)
+      updated_by: 'USR001', // System user (暫定：マイグレーション 003 の NOT NULL DROP 実行待機中)
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -282,10 +285,11 @@ export default function NewDealPage() {
               退職予定日 <span className="text-red-500">*</span>
             </label>
             <input
-              type="date"
+              type="text"
               name="retirement_date"
               value={formData.retirement_date}
               onChange={handleChange}
+              placeholder="例：2026年6月末、今月末"
               className={inputCls('retirement_date')}
             />
             {errors.retirement_date && <p className="text-red-500 text-xs mt-1">{errors.retirement_date}</p>}

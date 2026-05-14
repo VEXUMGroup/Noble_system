@@ -11,6 +11,7 @@ import { formatCurrency, formatDate, getDaysUntil } from '@/lib/format';
 import { getDeal } from '@/lib/supabase';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useMasterData } from '@/lib/useMasterData';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 
 interface ContractPageProps {
   params: {
@@ -32,11 +33,15 @@ const PREFECTURES = [
 
 export default function ContractPage({ params }: ContractPageProps) {
   const router = useRouter();
+  const { role, isLoading: userLoading } = useCurrentUser();
   const { users, plans, sources, agencies } = useMasterData();
   const getUserName = (id: string) => users.find((u) => u.id === id)?.name ?? id ?? '-';
   const getPlanName = (code?: string) => plans.find((p) => p.code === code)?.name ?? code ?? '-';
   const getAgencyName = (code?: string) => agencies.find((a) => a.code === code)?.name ?? code ?? '-';
   const getSourceName = (code?: string) => sources.find((s) => s.code === code)?.name ?? code ?? '-';
+
+  // 営業部は閲覧のみ
+  const isReadOnly = role === 'sales';
 
   const [deal, setDeal] = useState<Record<string, any> | null>(null);
   const [dealLoading, setDealLoading] = useState(true);
@@ -103,6 +108,11 @@ export default function ContractPage({ params }: ContractPageProps) {
   };
 
   const handleComplete = () => {
+    if (isReadOnly) {
+      setErrorMessage('営業部は編集できません。管理者にお問い合わせください。');
+      return;
+    }
+
     if (!postalCode || !prefecture || !city || !address || !contractDate) {
       setErrorMessage('すべての項目を入力してください。');
       return;
@@ -129,6 +139,12 @@ export default function ContractPage({ params }: ContractPageProps) {
         <p className="text-sm text-gray-600 mt-2">ID: {deal.id} - {deal.customer_name}</p>
       </div>
 
+      {isReadOnly && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <p className="text-amber-800 font-medium">⚠️ 営業部は閲覧のみです。編集は管理者のみが可能です。</p>
+        </div>
+      )}
+
       {showSuccess && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <p className="text-green-800 font-medium">契約締結が完了しました</p>
@@ -152,11 +168,12 @@ export default function ContractPage({ params }: ContractPageProps) {
               </label>
               <input
                 type="text"
+                disabled={isReadOnly}
                 value={postalCode}
                 onChange={handlePostalCodeChange}
                 placeholder="000-0000"
                 maxLength={8}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -166,12 +183,13 @@ export default function ContractPage({ params }: ContractPageProps) {
                 都道府県 <span className="text-red-500">*</span>
               </label>
               <select
+                disabled={isReadOnly}
                 value={prefecture}
                 onChange={(e) => {
                   setPrefecture(e.target.value);
                   setErrorMessage('');
                 }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
               >
                 <option value="">選択してください</option>
                 {PREFECTURES.map((pref) => (
@@ -189,13 +207,14 @@ export default function ContractPage({ params }: ContractPageProps) {
               </label>
               <input
                 type="text"
+                disabled={isReadOnly}
                 value={city}
                 onChange={(e) => {
                   setCity(e.target.value);
                   setErrorMessage('');
                 }}
                 placeholder="例: 中央区"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -206,13 +225,14 @@ export default function ContractPage({ params }: ContractPageProps) {
               </label>
               <input
                 type="text"
+                disabled={isReadOnly}
                 value={address}
                 onChange={(e) => {
                   setAddress(e.target.value);
                   setErrorMessage('');
                 }}
                 placeholder="例: 1-2-3"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -224,12 +244,13 @@ export default function ContractPage({ params }: ContractPageProps) {
             </label>
             <input
               type="date"
+              disabled={isReadOnly}
               value={contractDate}
               onChange={(e) => {
                 setContractDate(e.target.value);
                 setErrorMessage('');
               }}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -244,8 +265,9 @@ export default function ContractPage({ params }: ContractPageProps) {
             </button>
             <button
               type="button"
+              disabled={isReadOnly}
               onClick={handleComplete}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed"
             >
               締結完了
             </button>

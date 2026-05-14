@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { GoogleCalendarPanel } from '@/components/GoogleCalendarPanel';
 import { useDeals } from '@/lib/useDeals';
 import { useMasterData } from '@/lib/useMasterData';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 
 // Icons
 const AlertCircle = ({ className }: { className?: string }) => (
@@ -87,10 +88,13 @@ const Info = ({ className }: { className?: string }) => (
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { userId, isLoading: userLoading } = useCurrentUser();
   // 仕様書 5.8: ダッシュボードアクセス時にポップアップ自動表示
   const [showRetirementPopup, setShowRetirementPopup] = useState(true);
 
-  const { deals: rawDeals, isLoading: dealsLoading } = useDeals();
+  const { deals: rawDeals, isLoading: dealsLoading } = useDeals(
+    userId ? { assigned_to: userId } : undefined
+  );
   const { users, isLoading: masterLoading } = useMasterData();
   const deals = rawDeals as unknown as Array<Record<string, any>>;
   const getUserName = (userId: string) =>

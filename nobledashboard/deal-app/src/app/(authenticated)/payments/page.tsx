@@ -8,6 +8,7 @@ import {
 import { formatCurrency, formatDate } from '@/lib/format';
 import { useDeals } from '@/lib/useDeals';
 import { useMasterData } from '@/lib/useMasterData';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 import { addPayment, getPayments, type PaymentRecord } from '@/lib/supabase';
 
 interface PaymentDealInfo {
@@ -22,6 +23,11 @@ interface PaymentDealInfo {
 }
 
 export default function PaymentsPage() {
+  const { role } = useCurrentUser();
+
+  // 営業部は閲覧のみ
+  const isReadOnly = role === 'sales';
+
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
   const [selectedDeal, setSelectedDeal] = useState<PaymentDealInfo | null>(null);
   const [paymentDate, setPaymentDate] = useState('');
@@ -145,6 +151,10 @@ export default function PaymentsPage() {
   };
 
   const handleRegisterPayment = () => {
+    if (isReadOnly) {
+      setPaymentMessage('営業部は入金登録ができません。管理者にお問い合わせください。');
+      return;
+    }
     if (!selectedDeal) return;
 
     const amount = Number(paymentAmount.replace(/,/g, ''));
@@ -188,6 +198,12 @@ export default function PaymentsPage() {
           <p className="text-xs text-gray-500 mt-1">支払処理の実行・状況管理・代理店コミッション｜対象: 管理</p>
         </div>
       </div>
+
+      {isReadOnly && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <p className="text-amber-800 font-medium">⚠️ 営業部は閲覧のみです。入金登録は管理者のみが可能です。</p>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -480,8 +496,9 @@ export default function PaymentsPage() {
                 <div className="flex gap-2">
                   <button
                     type="button"
+                    disabled={isReadOnly}
                     onClick={handleRegisterPayment}
-                    className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm transition"
+                    className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm transition disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed"
                   >
                     入金を登録
                   </button>

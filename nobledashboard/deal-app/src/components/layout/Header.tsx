@@ -1,6 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { signOut } from '@/lib/supabase';
 
 interface HeaderProps {
   title: string;
@@ -18,10 +20,21 @@ export function Header({
   unreadNotificationCount,
   onMenuToggle,
 }: HeaderProps) {
+  const router = useRouter();
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const unreadCount = useMemo(
     () => (typeof unreadNotificationCount === 'number' ? unreadNotificationCount : 0),
     [unreadNotificationCount]
   );
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      router.push('/');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
 
   return (
     <header className="fixed top-0 left-0 md:left-64 right-0 h-16 bg-white border-b border-gray-200 shadow-sm flex items-center justify-between px-4 md:px-8 z-30">
@@ -64,15 +77,39 @@ export function Header({
           </button>
         </div>
 
-        {/* User Avatar and Name */}
-        <div className="flex items-center gap-3 pl-4 md:pl-6 border-l border-gray-200">
-          <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold">
-            {currentUser.name.charAt(0)}
-          </div>
-          <div className="text-sm hidden sm:block">
-            <p className="font-medium text-gray-900">{currentUser.name}</p>
-            <p className="text-xs text-gray-500">{currentUser.email}</p>
-          </div>
+        {/* User Avatar and Name with Dropdown */}
+        <div className="relative pl-4 md:pl-6 border-l border-gray-200">
+          <button
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
+            <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold">
+              {currentUser.name.charAt(0)}
+            </div>
+            <div className="text-sm hidden sm:block">
+              <p className="font-medium text-gray-900">{currentUser.name}</p>
+              <p className="text-xs text-gray-500">{currentUser.email}</p>
+            </div>
+          </button>
+
+          {/* Dropdown Menu */}
+          {isDropdownOpen && (
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+              <div className="p-3 border-b border-gray-100">
+                <p className="font-medium text-gray-900 text-sm">{currentUser.name}</p>
+                <p className="text-xs text-gray-500">{currentUser.email}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsDropdownOpen(false);
+                  handleLogout();
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+              >
+                ログアウト
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { STATUS_CONFIG } from '@/lib/types';
@@ -8,10 +8,14 @@ import { formatDate, getDaysUntil } from '@/lib/format';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useMasterData } from '@/lib/useMasterData';
 import { useDeals } from '@/lib/useDeals';
+import { useCurrentUser } from '@/lib/useCurrentUser';
 
 export default function DealsPage() {
   const router = useRouter();
-  const { deals: rawDeals, isLoading: dealsLoading } = useDeals();
+  const { userId, isLoading: userLoading } = useCurrentUser();
+  const { deals: rawDeals, isLoading: dealsLoading } = useDeals(
+    userId ? { assigned_to: userId } : undefined
+  );
   const deals = rawDeals as unknown as Array<Record<string, any>>;
   const { users, sources, agencies, isLoading: masterLoading } = useMasterData();
   const displayUsers = users;
@@ -25,13 +29,20 @@ export default function DealsPage() {
   const getAgencyName = (code?: string) =>
     displayAgencies.find((a) => a.code === code)?.name ?? code ?? '-';
 
-  // Filter states
+  // Filter states - 担当者フィルターは現在のユーザーでプリセット
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [assignedToFilter, setAssignedToFilter] = useState<string>('');
+  const [assignedToFilter, setAssignedToFilter] = useState<string>(userId || '');
   const [dealDateFromFilter, setDealDateFromFilter] = useState<string>('');
   const [dealDateToFilter, setDealDateToFilter] = useState<string>('');
   const [agencyFilter, setAgencyFilter] = useState<string>('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
+
+  // userId が取得されたら assignedToFilter を更新
+  useEffect(() => {
+    if (userId) {
+      setAssignedToFilter(userId);
+    }
+  }, [userId]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -71,8 +82,18 @@ export default function DealsPage() {
     setCurrentPage(1);
   };
 
+  // ユーザー情報またはデータ読み込み中の場合
+  const isLoading = userLoading || dealsLoading;
+
   return (
     <div className="space-y-6">
+      {/* ローディング状態 */}
+      {isLoading && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-blue-800 font-medium">読み込み中...</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">商談一覧</h1>
@@ -106,7 +127,9 @@ export default function DealsPage() {
 
           {/* Assigned To Filter */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-medium text-gray-700">担当者</label>
+            <label className="text-xs sm:text-sm font-medium text-gray-700">
+              担当者 <span className="text-xs text-gray-500">(デフォルト: あなたの案件)</span>
+            </label>
             <select
               value={assignedToFilter}
               onChange={(e) => setAssignedToFilter(e.target.value)}
