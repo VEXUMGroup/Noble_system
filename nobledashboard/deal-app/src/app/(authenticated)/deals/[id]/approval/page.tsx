@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -8,27 +8,11 @@ import {
   VALID_TRANSITIONS,
   type DealStatus,
 } from '@/lib/types';
-import {
-  mockDeals,
-  mockUsers,
-  mockPlans,
-  mockSources,
-  mockAgencies,
-  mockNotifications,
-  getUserName,
-  getPlanName,
-  getAgencyName,
-  getSourceName,
-  formatCurrency,
-  formatDate,
-  getDaysUntil,
-  currentUser,
-  type Deal,
-  type Plan,
-  type Source,
-  type Agency,
-} from '@/lib/mock-data';
+import { formatCurrency, formatDate, getDaysUntil } from '@/lib/format';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { getDeal } from '@/lib/supabase';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useMasterData } from '@/lib/useMasterData';
 
 interface ApprovalPageProps {
   params: {
@@ -38,11 +22,39 @@ interface ApprovalPageProps {
 
 export default function ApprovalPage({ params }: ApprovalPageProps) {
   const router = useRouter();
-  const deal = mockDeals.find((d) => d.id === params.id);
+  const { users, plans, sources, agencies } = useMasterData();
+  const getUserName = (id: string) => users.find((u) => u.id === id)?.name ?? id ?? '-';
+  const getPlanName = (code?: string) => plans.find((p) => p.code === code)?.name ?? code ?? '-';
+  const getAgencyName = (code?: string) => agencies.find((a) => a.code === code)?.name ?? code ?? '-';
+  const getSourceName = (code?: string) => sources.find((s) => s.code === code)?.name ?? code ?? '-';
+
+  const [deal, setDeal] = useState<Record<string, any> | null>(null);
+  const [dealLoading, setDealLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDealLoading(true);
+    (async () => {
+      const data = await getDeal(params.id);
+      if (!cancelled) setDeal(data as any);
+      if (!cancelled) setDealLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id]);
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+
+  if (dealLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-8">
+        <p className="text-gray-600">読み込み中...</p>
+      </div>
+    );
+  }
 
   if (!deal) {
     return (
@@ -58,13 +70,21 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
 
   // 仕様書 5.4: 「承認」ボタン: ステータスを「事務承認済」に更新
   const handleApprove = () => {
-    deal.status = 'APPROVED';
-    deal.updated_at = new Date().toISOString();
-    setSuccessMessage('承認が完了しました。締結工程へ進行できます。');
-    setShowSuccess(true);
-    setTimeout(() => {
-      router.push(`/deals/${params.id}`);
-    }, 1500);
+    (async () => {
+      const supabase = createSupabaseBrowserClient();
+      const payload = { status: 'APPROVED', updated_at: new Date().toISOString() };
+      const { error } = await supabase.from('deals').update(payload).eq('id', params.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
+      setSuccessMessage('承認が完了しました。締結工程へ進行できます。');
+      setShowSuccess(true);
+      setTimeout(() => {
+        router.push(`/deals/${params.id}`);
+      }, 1500);
+    })();
   };
 
   // 仕様書 5.4: 「差し戻し」ボタン: コメント入力後、前工程（成約）へ差し戻し
@@ -74,14 +94,25 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
       alert('差し戻しコメントを入力してください');
       return;
     }
-    deal.status = 'CONTRACTED';
-    deal.memo = rejectComment.trim();
-    deal.updated_at = new Date().toISOString();
-    setSuccessMessage('「成約」ステータスに差し戻しました。営業担当へ承認依頼通知を送信しました。');
-    setShowSuccess(true);
-    setTimeout(() => {
-      router.push(`/deals/${params.id}`);
-    }, 1500);
+    (async () => {
+      const supabase = createSupabaseBrowserClient();
+      const payload = {
+        status: 'CONTRACTED',
+        memo: rejectComment.trim(),
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from('deals').update(payload).eq('id', params.id);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
+      setSuccessMessage('「成約」ステータスに差し戻しました。営業担当へ承認依頼通知を送信しました。');
+      setShowSuccess(true);
+      setTimeout(() => {
+        router.push(`/deals/${params.id}`);
+      }, 1500);
+    })();
   };
 
   return (

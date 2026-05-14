@@ -24,7 +24,7 @@ export default async function AuthenticatedLayout({
     id: member?.id ?? user?.id ?? 'unknown',
     name: member?.name ?? user?.email ?? 'Unknown User',
     email: member?.email ?? user?.email ?? '',
-    role: (member?.role ?? 'sales') as 'sales' | 'admin_staff' | 'manager',
+    role: (member?.role ?? 'sales') as 'sales' | 'manager',
   };
 
   return <AuthenticatedShell currentUser={currentUser}>{children}</AuthenticatedShell>;

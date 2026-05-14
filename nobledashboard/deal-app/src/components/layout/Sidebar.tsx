@@ -65,6 +65,20 @@ const navGroups = [
       </svg>
     ),
   },
+  {
+    label: 'マスタ管理',
+    href: '/master',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M4 6h16M4 12h16M4 18h16"
+        />
+      </svg>
+    ),
+  },
 ];
 
 interface SidebarProps {
@@ -72,7 +86,7 @@ interface SidebarProps {
     id: string;
     name: string;
     email: string;
-    role: 'sales' | 'admin_staff' | 'manager';
+    role: 'sales' | 'manager';
   };
   isOpen?: boolean;
   onClose?: () => void;
@@ -84,7 +98,6 @@ export function Sidebar({ currentUser, isOpen = false, onClose }: SidebarProps) 
   const getRoleLabel = (role: string): string => {
     const roleMap: Record<string, string> = {
       sales: '営業',
-      admin_staff: '事務',
       manager: 'マネージャー',
     };
     return roleMap[role] || role;

@@ -1,13 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  mockDeals,
-  paymentPlanOptions,
-  paymentMethodOptions,
-} from '@/lib/mock-data';
+import { paymentPlanOptions, paymentMethodOptions } from '@/lib/constants';
 import { useMasterData } from '@/lib/useMasterData';
+import { getDeal } from '@/lib/supabase';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 interface ContractDetailPageProps {
   params: {
@@ -18,26 +16,57 @@ interface ContractDetailPageProps {
 export default function ContractDetailPage({ params }: ContractDetailPageProps) {
   const { plans } = useMasterData();
   const router = useRouter();
-  const deal = mockDeals.find((d) => d.id === params.id);
+  const [deal, setDeal] = useState<Record<string, any> | null>(null);
+  const [dealLoading, setDealLoading] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    setDealLoading(true);
+    (async () => {
+      const data = await getDeal(params.id);
+      if (!cancelled) setDeal(data as any);
+      if (!cancelled) setDealLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id]);
+
   // 成約プラン（10/12/18/24/28/30ヶ月 + その他）
-  const [contractPlan, setContractPlan] = useState(deal?.contract_plan || '');
+  const [contractPlan, setContractPlan] = useState('');
   const [contractPlanOther, setContractPlanOther] = useState(
-    deal?.contract_plan_other || ''
+    ''
   );
   // 支払いプラン（一括 / 分割 / 完全成功）
-  const [paymentPlan, setPaymentPlan] = useState(deal?.payment_plan || '');
+  const [paymentPlan, setPaymentPlan] = useState('');
   // 支払い方法（銀行振込 / カード / Stripe）
-  const [paymentMethod, setPaymentMethod] = useState(deal?.payment_method || '');
+  const [paymentMethod, setPaymentMethod] = useState('');
   // 支払い期限（自由記入）
-  const [paymentDeadline, setPaymentDeadline] = useState(
-    deal?.payment_deadline || ''
-  );
+  const [paymentDeadline, setPaymentDeadline] = useState('');
   // イレギュラー記載（支払い回数、入金者変更など）
-  const [irregularNotes, setIrregularNotes] = useState(deal?.irregular_notes || '');
+  const [irregularNotes, setIrregularNotes] = useState('');
 
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (!deal) return;
+    setContractPlan(deal.contract_plan || '');
+    setContractPlanOther(deal.contract_plan_other || '');
+    setPaymentPlan(deal.payment_plan || '');
+    setPaymentMethod(deal.payment_method || '');
+    setPaymentDeadline(deal.payment_deadline || '');
+    setIrregularNotes(deal.irregular_notes || '');
+  }, [deal]);
+
+  if (dealLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-8">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">成約詳細入力</h1>
+        <p className="text-gray-600">読み込み中...</p>
+      </div>
+    );
+  }
 
   if (!deal) {
     return (
@@ -66,21 +95,30 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
       return;
     }
 
-    deal.contract_plan = contractPlan;
-    deal.contract_plan_other =
-      contractPlan === 'その他' ? contractPlanOther : undefined;
-    deal.payment_plan = paymentPlan;
-    deal.payment_method = paymentMethod;
-    deal.payment_deadline = paymentDeadline;
-    deal.irregular_notes = irregularNotes || undefined;
-    deal.status = 'DETAIL_ENTERED';
-    deal.updated_at = new Date().toISOString();
-
-    setErrorMessage('');
-    setShowSuccess(true);
-    setTimeout(() => {
-      router.push(`/deals/${params.id}`);
-    }, 1500);
+    (async () => {
+      const supabase = createSupabaseBrowserClient();
+      const payload = {
+        contract_plan: contractPlan,
+        contract_plan_other: contractPlan === 'その他' ? contractPlanOther : null,
+        payment_plan: paymentPlan,
+        payment_method: paymentMethod,
+        payment_deadline: paymentDeadline,
+        irregular_notes: irregularNotes || null,
+        status: 'DETAIL_ENTERED',
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from('deals').update(payload).eq('id', deal.id);
+      if (error) {
+        setErrorMessage(error.message);
+        return;
+      }
+      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
+      setErrorMessage('');
+      setShowSuccess(true);
+      setTimeout(() => {
+        router.push(`/deals/${params.id}`);
+      }, 1500);
+    })();
   };
 
   const selectClass =

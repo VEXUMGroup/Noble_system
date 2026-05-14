@@ -74,7 +74,8 @@ export async function GET(request: Request) {
     const timeMax = url.searchParams.get('timeMax');
 
     const oauth2Client = createGoogleOAuthClient(providerToken, googleAccount.refresh_token);
-    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    google.options({ auth: oauth2Client });
+    const calendar = google.calendar('v3');
 
     const res = await calendar.events.list({
       calendarId: 'primary',

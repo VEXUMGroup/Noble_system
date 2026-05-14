@@ -33,7 +33,6 @@ interface ColumnDef {
 // ─────────────────────────────────────────────
 const ROLE_OPTIONS = [
   { value: 'sales', label: '営業' },
-  { value: 'admin_staff', label: '事務' },
   { value: 'manager', label: '管理者' },
 ];
 
@@ -119,6 +118,9 @@ export default function MasterPage() {
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [authEmail, setAuthEmail] = useState<string>('');
+  const [debugCount, setDebugCount] = useState<number | null>(null);
+  const [debugCountError, setDebugCountError] = useState<string>('');
 
   const [activeTab, setActiveTab] = useState<TabType>('m_users');
   const [tableData, setTableData] = useState<Record<string, unknown>[]>([]);
@@ -145,6 +147,7 @@ export default function MasterPage() {
         router.push('/');
         return;
       }
+      setAuthEmail(user.email ?? '');
       const ok = await isMasterAdmin(user.email ?? '');
       setIsAdmin(ok);
       setAuthChecked(true);
@@ -156,9 +159,18 @@ export default function MasterPage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     setPageError('');
+    setDebugCount(null);
+    setDebugCountError('');
     try {
       const data = await fetchMasterData(activeTab);
       setTableData(data);
+      if (data.length === 0) {
+        const { count, error } = await supabase
+          .from(activeTab)
+          .select('*', { count: 'exact', head: true });
+        if (error) setDebugCountError(error.message);
+        setDebugCount(typeof count === 'number' ? count : null);
+      }
     } catch (e) {
       setPageError(e instanceof Error ? e.message : 'データ取得に失敗しました');
     } finally {
@@ -288,6 +300,24 @@ export default function MasterPage() {
       {pageError && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
           {pageError}
+        </div>
+      )}
+
+      {/* Debug (empty時の切り分け用) */}
+      {!pageError && !isLoading && tableData.length === 0 && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600 space-y-1">
+          <p>
+            接続先: {(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/^https?:\/\//, '')}
+          </p>
+          <p>ログイン: {authEmail || '-'}</p>
+          <p>
+            件数推定:{' '}
+            {debugCount === null ? '不明（count取得できず）' : `${debugCount} 件`}
+          </p>
+          {debugCountError && <p className="text-red-600">countエラー: {debugCountError}</p>}
+          <p className="text-gray-500">
+            ※ 0件なら「別プロジェクトを見ている」か「RLSで見えていない」可能性が高いです。
+          </p>
         </div>
       )}
 

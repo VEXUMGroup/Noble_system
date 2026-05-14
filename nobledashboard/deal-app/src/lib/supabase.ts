@@ -19,6 +19,19 @@ export interface DealFilters {
   assigned_to?: string;
 }
 
+export interface PaymentRecord {
+  id: string;
+  deal_id: string;
+  date: string;
+  amount: number;
+  method: string;
+  payer_name?: string | null;
+  payment_status?: string | null;
+  memo?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export async function getDeals(filters?: DealFilters) {
   try {
     const supabase = getSupabaseBrowserClient();
@@ -60,6 +73,29 @@ export async function getDeal(id: string) {
     console.error('Error in getDeal:', error);
     return null;
   }
+}
+
+export async function getPayments(dealId?: string) {
+  try {
+    const supabase = getSupabaseBrowserClient();
+    let query = supabase.from('payments').select('*');
+    if (dealId) query = query.eq('deal_id', dealId);
+    const { data, error } = await query.order('date', { ascending: false });
+    if (error) {
+      console.error('Error fetching payments:', error);
+      return [];
+    }
+    return (data || []) as PaymentRecord[];
+  } catch (error) {
+    console.error('Error in getPayments:', error);
+    return [];
+  }
+}
+
+export async function addPayment(record: PaymentRecord) {
+  const supabase = getSupabaseBrowserClient();
+  const { error } = await supabase.from('payments').insert(record);
+  if (error) throw new Error(error.message);
 }
 
 export interface MUser {

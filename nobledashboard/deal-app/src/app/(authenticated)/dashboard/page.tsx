@@ -4,17 +4,11 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { STATUS_CONFIG } from '@/lib/types';
-import {
-  mockDeals,
-  mockUsers,
-  mockNotifications,
-  getUserName,
-  formatCurrency,
-  formatDate,
-  getDaysUntil,
-} from '@/lib/mock-data';
+import { formatCurrency, formatDate, getDaysUntil } from '@/lib/format';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { GoogleCalendarPanel } from '@/components/GoogleCalendarPanel';
+import { useDeals } from '@/lib/useDeals';
+import { useMasterData } from '@/lib/useMasterData';
 
 // Icons
 const AlertCircle = ({ className }: { className?: string }) => (
@@ -96,13 +90,19 @@ export default function DashboardPage() {
   // 仕様書 5.8: ダッシュボードアクセス時にポップアップ自動表示
   const [showRetirementPopup, setShowRetirementPopup] = useState(true);
 
+  const { deals: rawDeals, isLoading: dealsLoading } = useDeals();
+  const { users, isLoading: masterLoading } = useMasterData();
+  const deals = rawDeals as unknown as Array<Record<string, any>>;
+  const getUserName = (userId: string) =>
+    users.find((u) => u.id === userId)?.name ?? userId ?? '-';
+
   // Calculate summary stats
-  const totalDeals = mockDeals.length;
-  const newAndInterviewedDeals = mockDeals.filter((d) =>
+  const totalDeals = deals.length;
+  const newAndInterviewedDeals = deals.filter((d) =>
     ['NEW', 'INTERVIEWED'].includes(d.status)
   ).length;
 
-  const contractedDeals = mockDeals.filter((d) => {
+  const contractedDeals = deals.filter((d) => {
     const contractedStatuses = [
       'CONTRACTED',
       'DETAIL_ENTERED',
@@ -114,11 +114,11 @@ export default function DashboardPage() {
     return contractedStatuses.includes(d.status);
   }).length;
 
-  const consideringDeals = mockDeals.filter((d) => d.status === 'CONSIDERING').length;
+  const consideringDeals = deals.filter((d) => d.status === 'CONSIDERING').length;
 
   // Calculate this month's contracted amount
-  const today = new Date('2026-04-16');
-  const thisMonthContracted = mockDeals
+  const today = new Date();
+  const thisMonthContracted = deals
     .filter((d) => {
       const updatedAt = new Date(d.updated_at);
       const contractedStatuses = [
@@ -138,18 +138,18 @@ export default function DashboardPage() {
     .reduce((sum, d) => sum + (d.amount || 0), 0);
 
   // Get deals within 14 days of retirement with CONSIDERING status
-  const retirementAlerts = mockDeals.filter((deal) => {
+  const retirementAlerts = deals.filter((deal) => {
     if (deal.status !== 'CONSIDERING') return false;
     return getDaysUntil(deal.retirement_date) <= 14;
   });
 
   // Get recent 5 deals sorted by updated_at descending
-  const recentDeals = [...mockDeals].sort((a, b) => {
+  const recentDeals = [...deals].sort((a, b) => {
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
   }).slice(0, 5);
 
   // Get notifications
-  const notifications = mockNotifications;
+  const notifications: any[] = [];
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -171,6 +171,10 @@ export default function DashboardPage() {
       <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">ダッシュボード</h1>
 
       <GoogleCalendarPanel />
+
+      {(dealsLoading || masterLoading) && (
+        <div className="text-sm text-gray-500">読み込み中...</div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">

@@ -8,38 +8,31 @@ import {
   VALID_TRANSITIONS,
   type DealStatus,
 } from '@/lib/types';
-import {
-  mockDeals,
-  mockUsers,
-  mockPlans,
-  mockSources,
-  mockAgencies,
-  mockNotifications,
-  getUserName,
-  getPlanName,
-  getAgencyName,
-  getSourceName,
-  formatCurrency,
-  formatDate,
-  getDaysUntil,
-  currentUser,
-  type Deal,
-  type Plan,
-  type Source,
-  type Agency,
-} from '@/lib/mock-data';
+import { formatCurrency, formatDate, getDaysUntil } from '@/lib/format';
+import { useDeals } from '@/lib/useDeals';
+import { useMasterData } from '@/lib/useMasterData';
+
+type DealRow = Record<string, any>;
 
 export default function ReviewPage() {
   const router = useRouter();
   const [dismissedAlert, setDismissedAlert] = useState<string | null>(null);
 
+  const { deals: rawDeals, isLoading: dealsLoading } = useDeals({ status: 'CONSIDERING' });
+  const { users, plans, sources, agencies, isLoading: masterLoading } = useMasterData();
+  const deals = rawDeals as unknown as DealRow[];
+  const getUserName = (userId: string) => users.find((u) => u.id === userId)?.name ?? userId ?? '-';
+  const getPlanName = (code?: string) => plans.find((p) => p.code === code)?.name ?? code ?? '-';
+  const getAgencyName = (code?: string) => agencies.find((a) => a.code === code)?.name ?? code ?? '-';
+  const getSourceName = (code?: string) => sources.find((s) => s.code === code)?.name ?? code ?? '-';
+
   // Filter deals with CONSIDERING status
-  const consideringDeals = useMemo(() => {
-    return mockDeals.filter((deal) => deal.status === 'CONSIDERING');
-  }, []);
+  const consideringDeals = useMemo<DealRow[]>(() => {
+    return deals.filter((deal) => deal.status === 'CONSIDERING');
+  }, [deals]);
 
   // Calculate days remaining and sort
-  const dealsWithDays = useMemo(() => {
+  const dealsWithDays = useMemo<Array<DealRow & { daysRemaining: number }>>(() => {
     return consideringDeals
       .map((deal) => ({
         ...deal,

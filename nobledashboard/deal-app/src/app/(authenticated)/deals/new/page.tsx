@@ -2,12 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  mockDeals,
-  prospectLevels,
-  agencyTypes,
-  type Deal,
-} from '@/lib/mock-data';
+import { prospectLevels, agencyTypes } from '@/lib/constants';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useMasterData } from '@/lib/useMasterData';
 
 interface FormData {
@@ -70,11 +66,12 @@ export default function NewDealPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validateForm()) return;
 
-    const newDeal: Deal = {
-      id: `D-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${String(mockDeals.length + 1).padStart(3, '0')}`,
+    const dealId = `D-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${String(Math.floor(Math.random() * 900) + 100)}`;
+    const newDeal = {
+      id: dealId,
       customer_name: formData.customer_name,
       assigned_to: formData.assigned_to,
       deal_date: formData.deal_date,
@@ -94,10 +91,15 @@ export default function NewDealPage() {
       updated_at: new Date().toISOString(),
     };
 
-    mockDeals.push(newDeal);
+    const supabase = createSupabaseBrowserClient();
+    const { error } = await supabase.from('deals').insert(newDeal);
+    if (error) {
+      setErrors((prev) => ({ ...prev, customer_name: error.message }));
+      return;
+    }
     setShowSuccess(true);
     setTimeout(() => {
-      router.push(`/deals/${newDeal.id}`);
+      router.push(`/deals/${dealId}`);
     }, 1200);
   };
 

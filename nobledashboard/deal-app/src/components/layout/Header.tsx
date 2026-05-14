@@ -1,16 +1,27 @@
 'use client';
 
-import { currentUser, mockNotifications } from '@/lib/mock-data';
+import { useMemo } from 'react';
 
 interface HeaderProps {
   title: string;
+  currentUser: {
+    name: string;
+    email: string;
+  };
+  unreadNotificationCount?: number;
   onMenuToggle?: () => void;
 }
 
-export function Header({ title, onMenuToggle }: HeaderProps) {
-  const unreadNotificationCount = mockNotifications.filter(
-    (n) => !n.is_read
-  ).length;
+export function Header({
+  title,
+  currentUser,
+  unreadNotificationCount,
+  onMenuToggle,
+}: HeaderProps) {
+  const unreadCount = useMemo(
+    () => (typeof unreadNotificationCount === 'number' ? unreadNotificationCount : 0),
+    [unreadNotificationCount]
+  );
 
   return (
     <header className="fixed top-0 left-0 md:left-64 right-0 h-16 bg-white border-b border-gray-200 shadow-sm flex items-center justify-between px-4 md:px-8 z-30">
@@ -45,9 +56,9 @@ export function Header({ title, onMenuToggle }: HeaderProps) {
                 d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
               />
             </svg>
-            {unreadNotificationCount > 0 && (
+            {unreadCount > 0 && (
               <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-600 rounded-full">
-                {unreadNotificationCount}
+                {unreadCount}
               </span>
             )}
           </button>

@@ -1,23 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   STATUS_CONFIG,
   type DealStatus,
 } from '@/lib/types';
-import {
-  mockDeals,
-  mockPaymentRecords,
-  getAgencyName,
-  getPlanName,
-  formatCurrency,
-  formatDate,
-  type Deal,
-  type PaymentRecord,
-} from '@/lib/mock-data';
+import { formatCurrency, formatDate } from '@/lib/format';
+import { useDeals } from '@/lib/useDeals';
+import { useMasterData } from '@/lib/useMasterData';
+import { addPayment, getPayments, type PaymentRecord } from '@/lib/supabase';
 
 interface PaymentDealInfo {
-  deal: Deal;
+  deal: Record<string, any>;
   paid: number;
   unpaid: number;
   status: string;
@@ -38,9 +32,27 @@ export default function PaymentsPage() {
   const [paymentMemo, setPaymentMemo] = useState('');
   const [paymentMessage, setPaymentMessage] = useState('');
 
-  // Use state for mock data so UI recomputes when we update records
-  const [deals, setDeals] = useState(() => mockDeals);
-  const [paymentRecords, setPaymentRecords] = useState(() => mockPaymentRecords);
+  const { deals: rawDeals, isLoading: dealsLoading } = useDeals();
+  const deals = rawDeals as unknown as Array<Record<string, any>>;
+  const { agencies, plans, isLoading: masterLoading } = useMasterData();
+  const getAgencyName = (code?: string) => agencies.find((a) => a.code === code)?.name ?? code ?? '-';
+  const getPlanName = (code?: string) => plans.find((p) => p.code === code)?.name ?? code ?? '-';
+
+  const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPaymentsLoading(true);
+    (async () => {
+      const records = await getPayments();
+      if (!cancelled) setPaymentRecords(records);
+      if (!cancelled) setPaymentsLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Build payment deal info
   const paymentDeals = useMemo(() => {
     return deals
@@ -52,7 +64,7 @@ export default function PaymentsPage() {
       )
       .map((deal): PaymentDealInfo => {
         const history = paymentRecords.filter((r) => r.deal_id === deal.id);
-        const paid = deal.total_paid || 0;
+        const paid = history.reduce((sum, r) => sum + (r.amount || 0), 0);
         const amount = deal.amount || 0;
         const unpaid = Math.max(0, amount - paid);
         const planCount = deal.payment_plan === '3回払い' ? 3 : deal.payment_plan === '4回払い' ? 4 : 1;
@@ -151,28 +163,20 @@ export default function PaymentsPage() {
       payer_name: payerName.trim() || undefined,
     } as PaymentRecord;
 
-    setPaymentRecords((prev) => [...prev, newRecord]);
-
-    setDeals((prev) =>
-      prev.map((d) => {
-        if (d.id !== selectedDeal.deal.id) return d;
-        const updatedPaid = (d.total_paid || 0) + amount;
-        const totalAmount = d.amount || 0;
-        return {
-          ...d,
-          total_paid: updatedPaid,
-          payment_status: paymentStatus,
-          updated_at: new Date().toISOString(),
-          status: totalAmount > 0 && updatedPaid >= totalAmount ? 'COMPLETED' : 'PAYMENT_MANAGING',
-        };
-      })
-    );
-
-    setPaymentMessage('入金を登録しました。');
-    setTimeout(() => {
-      setSelectedDeal(null);
-      setPaymentMessage('');
-    }, 800);
+    (async () => {
+      try {
+        await addPayment(newRecord);
+        const records = await getPayments();
+        setPaymentRecords(records);
+        setPaymentMessage('入金を登録しました。');
+        setTimeout(() => {
+          setSelectedDeal(null);
+          setPaymentMessage('');
+        }, 800);
+      } catch (e) {
+        setPaymentMessage(e instanceof Error ? e.message : '入金登録に失敗しました。');
+      }
+    })();
   };
 
   return (

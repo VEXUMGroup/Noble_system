@@ -9,7 +9,7 @@ type AuthenticatedShellProps = {
     id: string;
     name: string;
     email: string;
-    role: 'sales' | 'admin_staff' | 'manager';
+    role: 'sales' | 'manager';
   };
 };
 

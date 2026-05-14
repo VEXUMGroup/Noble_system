@@ -1,32 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   STATUS_CONFIG,
   VALID_TRANSITIONS,
   type DealStatus,
 } from '@/lib/types';
-import {
-  mockDeals,
-  mockUsers,
-  mockPlans,
-  mockSources,
-  mockAgencies,
-  mockNotifications,
-  getUserName,
-  getPlanName,
-  getAgencyName,
-  getSourceName,
-  formatCurrency,
-  formatDate,
-  getDaysUntil,
-  currentUser,
-  type Deal,
-  type Plan,
-  type Source,
-  type Agency,
-} from '@/lib/mock-data';
+import { formatCurrency, formatDate, getDaysUntil } from '@/lib/format';
+import { getDeal } from '@/lib/supabase';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useMasterData } from '@/lib/useMasterData';
 
 interface ContractPageProps {
   params: {
@@ -48,14 +32,52 @@ const PREFECTURES = [
 
 export default function ContractPage({ params }: ContractPageProps) {
   const router = useRouter();
-  const deal = mockDeals.find((d) => d.id === params.id);
-  const [postalCode, setPostalCode] = useState(deal?.address?.split(' ')[0] || '');
+  const { users, plans, sources, agencies } = useMasterData();
+  const getUserName = (id: string) => users.find((u) => u.id === id)?.name ?? id ?? '-';
+  const getPlanName = (code?: string) => plans.find((p) => p.code === code)?.name ?? code ?? '-';
+  const getAgencyName = (code?: string) => agencies.find((a) => a.code === code)?.name ?? code ?? '-';
+  const getSourceName = (code?: string) => sources.find((s) => s.code === code)?.name ?? code ?? '-';
+
+  const [deal, setDeal] = useState<Record<string, any> | null>(null);
+  const [dealLoading, setDealLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setDealLoading(true);
+    (async () => {
+      const data = await getDeal(params.id);
+      if (!cancelled) setDeal(data as any);
+      if (!cancelled) setDealLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id]);
+
+  const [postalCode, setPostalCode] = useState('');
   const [prefecture, setPrefecture] = useState('');
   const [city, setCity] = useState('');
   const [address, setAddress] = useState('');
-  const [contractDate, setContractDate] = useState(deal?.contract_date || '');
+  const [contractDate, setContractDate] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (!deal) return;
+    setPostalCode(deal.address?.split(' ')[0] || '');
+    setContractDate(deal.contract_date || '');
+  }, [deal]);
+
+  if (dealLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-lg shadow-md p-8 text-center">
+            <p className="text-gray-600">読み込み中...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!deal) {
     return (

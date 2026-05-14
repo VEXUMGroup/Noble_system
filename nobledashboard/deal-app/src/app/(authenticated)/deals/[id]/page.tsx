@@ -1,20 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { RESULT_STATUS_TO_DEAL_STATUS } from '@/lib/types';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { formatDate } from '@/lib/format';
 import {
-  mockDeals,
-  formatDate,
   consideringReasons,
   outOfScopeReasons,
   lostReasons,
   hrProposalOptions,
   hrFeasibilityOptions,
-} from '@/lib/mock-data';
+} from '@/lib/constants';
 import { useMasterData } from '@/lib/useMasterData';
+import { getDeal } from '@/lib/supabase';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 interface DealDetailPageProps {
   params: { id: string };
@@ -25,10 +26,35 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const { users, sources, agencies, statuses } = useMasterData();
   const interviewStatuses = statuses.filter(s => s.code.startsWith('ST_')).map(s => s.name);
   const resultStatuses = statuses.filter(s => s.code.startsWith('RS_')).map(s => s.name);
-  const deal = mockDeals.find((item) => item.id === params.id);
+  const [deal, setDeal] = useState<Record<string, any> | null>(null);
+  const [dealLoading, setDealLoading] = useState(true);
+  const [dealError, setDealError] = useState<string>('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setDealLoading(true);
+    setDealError('');
+    (async () => {
+      const data = await getDeal(params.id);
+      if (cancelled) return;
+      if (!data) {
+        setDeal(null);
+        setDealError('商談が見つかりません。');
+      } else {
+        setDeal(data as any);
+      }
+      setDealLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id]);
 
   // ローカルでステータスを管理（モックデータ変更をUIに即反映するため）
-  const [dealStatus, setDealStatus] = useState(deal?.status ?? 'NEW');
+  const [dealStatus, setDealStatus] = useState('NEW');
+  useEffect(() => {
+    if (deal?.status) setDealStatus(deal.status);
+  }, [deal?.status]);
 
   // 面談記録フォームの状態（NEW のとき表示）
   const [interviewStatus, setInterviewStatus] = useState('');
@@ -53,19 +79,39 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
   // ── 顧客詳細編集フォームの状態
   const [isEditing, setIsEditing] = useState(false);
-  const [editCustomerName, setEditCustomerName] = useState(deal?.customer_name ?? '');
-  const [editAssignedTo, setEditAssignedTo] = useState(deal?.assigned_to ?? '');
-  const [editDealDate, setEditDealDate] = useState(deal?.deal_date ?? '');
-  const [editRetirementDate, setEditRetirementDate] = useState(deal?.retirement_date ?? '');
-  const [editSourceCode, setEditSourceCode] = useState(deal?.source_code ?? deal?.source ?? '');
-  const [editAgencyCode, setEditAgencyCode] = useState(deal?.agency_code ?? '');
-  const [editMemo, setEditMemo] = useState(deal?.memo ?? '');
+  const [editCustomerName, setEditCustomerName] = useState('');
+  const [editAssignedTo, setEditAssignedTo] = useState('');
+  const [editDealDate, setEditDealDate] = useState('');
+  const [editRetirementDate, setEditRetirementDate] = useState('');
+  const [editSourceCode, setEditSourceCode] = useState('');
+  const [editAgencyCode, setEditAgencyCode] = useState('');
+  const [editMemo, setEditMemo] = useState('');
+
+  useEffect(() => {
+    if (!deal) return;
+    setEditCustomerName(deal.customer_name ?? '');
+    setEditAssignedTo(deal.assigned_to ?? '');
+    setEditDealDate(deal.deal_date ?? '');
+    setEditRetirementDate(deal.retirement_date ?? '');
+    setEditSourceCode(deal.source_code ?? deal.source ?? '');
+    setEditAgencyCode(deal.agency_code ?? '');
+    setEditMemo(deal.memo ?? '');
+  }, [deal]);
+
+  if (dealLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-8">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">商談詳細</h1>
+        <p className="text-gray-600">読み込み中...</p>
+      </div>
+    );
+  }
 
   if (!deal) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">商談詳細</h1>
-        <p className="text-gray-600 mb-6">商談が見つかりません。</p>
+        <p className="text-gray-600 mb-6">{dealError || '商談が見つかりません。'}</p>
         <Link href="/deals" className="text-blue-600 hover:text-blue-700">商談一覧へ戻る</Link>
       </div>
     );
@@ -78,14 +124,25 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       return;
     }
     const newStatus = interviewStatus === '面談実施' ? 'INTERVIEWED' : 'NEW';
-    deal.interview_status = interviewStatus;
-    deal.status = newStatus;
-    deal.updated_at = new Date().toISOString();
-    setDealStatus(newStatus);
-    setInterviewError('');
-    setSuccessMessage('面談記録を保存しました');
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 2500);
+    (async () => {
+      const supabase = createSupabaseBrowserClient();
+      const payload = {
+        interview_status: interviewStatus,
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from('deals').update(payload).eq('id', deal.id);
+      if (error) {
+        setInterviewError(error.message);
+        return;
+      }
+      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
+      setDealStatus(newStatus);
+      setInterviewError('');
+      setSuccessMessage('面談記録を保存しました');
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2500);
+    })();
   };
 
   // ── 結果を保存（INTERVIEWED / CONSIDERING → 成約/検討/対象外/失注）
@@ -95,29 +152,46 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       return;
     }
     const mappedStatus = RESULT_STATUS_TO_DEAL_STATUS[resultStatus];
-    deal.result_status = resultStatus;
-    deal.status = mappedStatus;
-    deal.hr_proposal = hrProposal || undefined;
-    deal.hr_feasibility = hrFeasibility || undefined;
-    deal.hr_target_28m = hrTarget28m || undefined;
-    deal.next_action_date = nextActionDate || undefined;
-    if (resultStatus === '検討') {
-      deal.considering_reason = consideringReason || undefined;
-      deal.considering_reason_comment = consideringComment || undefined;
-    }
-    if (resultStatus === '対象外') {
-      deal.out_of_scope_reason = outOfScopeReason || undefined;
-      deal.out_of_scope_reason_comment = outOfScopeComment || undefined;
-    }
-    if (resultStatus === '失注') {
-      deal.lost_reason = lostReason || undefined;
-      deal.lost_reason_comment = lostComment || undefined;
-    }
-    deal.updated_at = new Date().toISOString();
-    setDealStatus(mappedStatus);
-    setResultError('');
-    setSuccessMessage(`結果「${resultStatus}」を保存しました`);
-    setShowSuccess(true);
+    (async () => {
+      const supabase = createSupabaseBrowserClient();
+      const payload: Record<string, unknown> = {
+        result_status: resultStatus,
+        status: mappedStatus,
+        hr_proposal: hrProposal || null,
+        hr_feasibility: hrFeasibility || null,
+        hr_target_28m: hrTarget28m || null,
+        next_action_date: nextActionDate || null,
+        considering_reason: null,
+        considering_reason_comment: null,
+        out_of_scope_reason: null,
+        out_of_scope_reason_comment: null,
+        lost_reason: null,
+        lost_reason_comment: null,
+        updated_at: new Date().toISOString(),
+      };
+      if (resultStatus === '検討') {
+        payload.considering_reason = consideringReason || null;
+        payload.considering_reason_comment = consideringComment || null;
+      }
+      if (resultStatus === '対象外') {
+        payload.out_of_scope_reason = outOfScopeReason || null;
+        payload.out_of_scope_reason_comment = outOfScopeComment || null;
+      }
+      if (resultStatus === '失注') {
+        payload.lost_reason = lostReason || null;
+        payload.lost_reason_comment = lostComment || null;
+      }
+      const { error } = await supabase.from('deals').update(payload).eq('id', deal.id);
+      if (error) {
+        setResultError(error.message);
+        return;
+      }
+      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
+      setDealStatus(mappedStatus);
+      setResultError('');
+      setSuccessMessage(`結果「${resultStatus}」を保存しました`);
+      setShowSuccess(true);
+    })();
 
     if (resultStatus === '成約') {
       setTimeout(() => router.push(`/deals/${deal.id}/contract-detail`), 1200);

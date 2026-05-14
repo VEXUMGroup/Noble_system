@@ -78,7 +78,7 @@ export async function softDeleteMasterData(
   if (error) throw new Error(error.message);
 }
 
-/** マスタ編集権限（admin_staff のみ） */
+/** マスタ編集権限（manager のみ） */
 export async function isMasterAdmin(email: string): Promise<boolean> {
   const supabase = getSupabaseBrowserClient();
   const { data } = await supabase
@@ -86,5 +86,5 @@ export async function isMasterAdmin(email: string): Promise<boolean> {
     .select('role')
     .eq('email', email)
     .maybeSingle();
-  return data?.role === 'admin_staff';
+  return data?.role === 'manager';
 }

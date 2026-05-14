@@ -1,6 +1,6 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 
-export type AppRole = 'sales' | 'admin_staff' | 'manager';
+export type AppRole = 'sales' | 'manager';
 
 export interface AppUserRecord {
   id: string;
@@ -52,7 +52,6 @@ export function getSafeNextPath(nextPath?: string | null): string {
 export function getRoleLabel(role: AppRole): string {
   const roleMap: Record<AppRole, string> = {
     sales: '営業',
-    admin_staff: '事務',
     manager: 'マネージャー',
   };
 

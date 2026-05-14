@@ -4,24 +4,19 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { STATUS_CONFIG } from '@/lib/types';
-import {
-  mockDeals,
-  mockUsers,
-  mockSources,
-  mockAgencies,
-  formatDate,
-  getDaysUntil,
-  type Deal,
-} from '@/lib/mock-data';
+import { formatDate, getDaysUntil } from '@/lib/format';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useMasterData } from '@/lib/useMasterData';
+import { useDeals } from '@/lib/useDeals';
 
 export default function DealsPage() {
   const router = useRouter();
+  const { deals: rawDeals, isLoading: dealsLoading } = useDeals();
+  const deals = rawDeals as unknown as Array<Record<string, any>>;
   const { users, sources, agencies, isLoading: masterLoading } = useMasterData();
-  const displayUsers = masterLoading ? mockUsers : users;
-  const displaySources = masterLoading ? mockSources : sources;
-  const displayAgencies = masterLoading ? mockAgencies : agencies;
+  const displayUsers = users;
+  const displaySources = sources;
+  const displayAgencies = agencies;
 
   const getUserName = (userId: string) =>
     displayUsers.find((u) => u.id === userId)?.name ?? userId ?? '-';
@@ -43,7 +38,7 @@ export default function DealsPage() {
   const itemsPerPage = 20;
 
   // Apply filters
-  const filteredDeals = mockDeals.filter((deal) => {
+  const filteredDeals = deals.filter((deal) => {
     if (statusFilter && deal.status !== statusFilter) return false;
     if (assignedToFilter && deal.assigned_to !== assignedToFilter) return false;
     if (dealDateFromFilter && new Date(deal.deal_date) < new Date(dealDateFromFilter)) return false;
