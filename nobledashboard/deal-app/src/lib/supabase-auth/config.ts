@@ -1,0 +1,31 @@
+export interface SupabaseCredentials {
+  url: string;
+  anonKey: string;
+}
+
+export function getOptionalSupabaseCredentials(): SupabaseCredentials | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+  if (!url || !anonKey) {
+    return null;
+  }
+
+  return { url, anonKey };
+}
+
+export function hasSupabaseCredentials(): boolean {
+  return getOptionalSupabaseCredentials() !== null;
+}
+
+export function getSupabaseCredentials(): SupabaseCredentials {
+  const credentials = getOptionalSupabaseCredentials();
+
+  if (!credentials) {
+    throw new Error('Missing Supabase environment variables.');
+  }
+
+  return credentials;
+}

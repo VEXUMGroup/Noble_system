@@ -1,0 +1,131 @@
+---
+title: 商談管理システム — 業務フロー・画面遷移図（社会保険給付金サポート）
+---
+
+stateDiagram-v2
+    direction TB
+
+    [*] --> ログイン画面
+    ログイン画面 --> ダッシュボード : SSO認証成功
+
+    %% ============================================
+    %% 営業フロー
+    %% ============================================
+    state "【営業フロー】" as sales_flow {
+        direction TB
+
+        state "予約" as reserve
+        state "情報抽出" as extract
+        state "Googleカレンダー連携" as gcal
+        state "自動抽出" as auto_extract
+        state "商談案件管理" as deal_mgmt
+        state "予約情報ポップアップ（担当毎）" as reserve_popup
+        state "情報確認・入力" as confirm_input
+        state "送信（商談結果報告）" as send_result
+
+        reserve --> extract
+        extract --> gcal
+        gcal --> auto_extract
+        auto_extract --> deal_mgmt
+        deal_mgmt --> reserve_popup
+        reserve_popup --> confirm_input
+        confirm_input --> send_result
+    }
+
+    ダッシュボード --> reserve : 新規予約
+
+    %% 商談結果の3分岐
+    state "商談結果" as result_branch <<choice>>
+    send_result --> result_branch
+
+    %% --- 成約ルート ---
+    result_branch --> 事務フロー : 成約
+
+    %% --- 検討・時期未定ルート ---
+    result_branch --> 検討_時期未定 : 検討 / 時期未定
+
+    state "検討・時期未定" as 検討_時期未定
+    state "検討ポップアップ（担当毎）" as review_popup
+    state "後追い対応" as followup
+
+    検討_時期未定 --> review_popup
+    review_popup --> followup
+    followup --> confirm_input : 再商談
+
+    %% --- 対象外ルート ---
+    result_branch --> 対象外 : 対象外
+    対象外 --> [*]
+
+    %% ============================================
+    %% 事務フロー（成約後）
+    %% ============================================
+    state "【事務フロー】" as 事務フロー {
+        direction TB
+
+        state "顧客管理" as customer_mgmt
+        state "詳細情報未入力ポップアップ（事務側）" as detail_popup
+        state "詳細情報入力" as detail_input
+        state "売上報告" as sales_report
+        state "オリエン日程入力" as orien_date
+        state "オリエン実施" as orien_exec
+        state "サポートスタート" as support_start
+        state "支払期日決定ポップアップ（事務・営業）" as pay_due_popup
+        state "入金案内" as pay_guide
+        state "支払期日3日前ポップアップ（事務・営業）" as pay_remind_popup
+        state "入金入力" as pay_entry
+        state "支払い管理" as pay_mgmt
+        state "代理店紹介料管理" as agency_fee
+
+        customer_mgmt --> detail_popup
+        detail_popup --> detail_input
+
+        detail_input --> sales_report
+        detail_input --> orien_date
+
+        orien_date --> orien_exec
+        orien_exec --> support_start
+
+        detail_input --> pay_due_popup
+        pay_due_popup --> pay_guide
+        pay_guide --> pay_remind_popup
+        pay_remind_popup --> pay_entry
+        pay_entry --> pay_mgmt
+        pay_mgmt --> agency_fee
+    }
+
+    agency_fee --> 完了
+    support_start --> 完了
+    完了 --> [*]
+
+    %% ============================================
+    %% ポップアップ通知まとめ
+    %% ============================================
+    note right of reserve_popup
+        【通知1】予約情報ポップアップ
+        対象: 営業担当者
+        タイミング: 予約登録時
+    end note
+
+    note right of review_popup
+        【通知2】検討・時期未定ポップアップ
+        対象: 営業担当者
+        タイミング: 成約以外の結果報告時
+    end note
+
+    note right of detail_popup
+        【通知3】詳細情報未入力ポップアップ
+        対象: 事務担当のみ
+        タイミング: 成約後・詳細未入力時
+    end note
+
+    note right of pay_due_popup
+        【通知4】支払期日決定ポップアップ
+        対象: 事務・営業担当
+        タイミング: 支払期日確定時
+    end note
+
+    note right of pay_remind_popup
+        【通知5】支払期日3日前リマインド
+        対象: 事務・営業担当
+        タイミング: 期日3日前（自動）
+    end note
