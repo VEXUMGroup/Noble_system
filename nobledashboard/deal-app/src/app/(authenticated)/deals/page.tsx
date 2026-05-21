@@ -11,6 +11,7 @@ import { useDeals } from '@/lib/useDeals';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
 import { ICalSettingsBar } from '@/components/ICalSettingsBar';
+import { GoogleCalendarPanel } from '@/components/GoogleCalendarPanel';
 
 export default function DealsPage() {
   const router = useRouter();
@@ -98,6 +99,9 @@ export default function DealsPage() {
 
       {/* カレンダー連携ステータスバー */}
       <ICalSettingsBar />
+
+      {/* カレンダー予定（商談化導線） */}
+      <GoogleCalendarPanel />
 
       {/* Header */}
       <div className="flex items-center justify-between gap-3">

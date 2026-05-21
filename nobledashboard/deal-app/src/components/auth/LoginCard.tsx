@@ -22,6 +22,16 @@ type LoginCardProps = {
   nextPath?: string;
 };
 
+async function safeReadJson(res: Response): Promise<any> {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    return await res.json();
+  }
+  const text = await res.text();
+  const head = text.slice(0, 120).replace(/\s+/g, ' ').trim();
+  return { error: `non_json_response status=${res.status} head=${head}` };
+}
+
 function buildRedirectUrl(nextPath: string) {
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -42,7 +52,7 @@ function isAuthDebugEnabled() {
 
 export function LoginCard({
   initialError = null,
-  nextPath = '/dashboard',
+  nextPath = '/deals',
 }: LoginCardProps) {
   const router = useRouter();
   const [error, setError] = useState(initialError);
@@ -68,7 +78,7 @@ export function LoginCard({
       });
 
       if (!res.ok) {
-        const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+        const payload = (await safeReadJson(res).catch(() => null)) as { error?: string } | null;
         setError(payload?.error ?? 'ログインに失敗しました。');
         return;
       }

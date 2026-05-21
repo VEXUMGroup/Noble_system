@@ -157,8 +157,8 @@ export default function MasterPage() {
     setAuthChecked(true);
 
     if (!isManager) {
-      console.log('[Master] Not manager role, redirecting to dashboard');
-      setTimeout(() => router.push('/dashboard'), 500);
+      console.log('[Master] Not manager role, redirecting to deals');
+      setTimeout(() => router.push('/deals'), 500);
     } else {
       console.log('[Master] Manager role confirmed, access granted!');
     }

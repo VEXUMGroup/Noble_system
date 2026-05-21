@@ -15,17 +15,16 @@ export function ICalSettingsBar() {
   const checkStatus = useCallback(async () => {
     setStatus('loading');
     try {
-      const res = await fetch('/api/google/calendar/events', { cache: 'no-store' });
-      const json = await res.json();
-      if (json?.error === 'ical_not_configured' || json?.error === 'unauthorized') {
+      // iCal fetch ではなく保存済み URL の有無だけ確認（軽量・確実）
+      const res = await fetch('/api/user/ical-url', { cache: 'no-store' });
+      if (!res.ok) {
         setStatus('not_configured');
-      } else if (!res.ok) {
-        setStatus('error');
-      } else {
-        setStatus('configured');
+        return;
       }
+      const json = await res.json();
+      setStatus(json?.ical_url ? 'configured' : 'not_configured');
     } catch {
-      setStatus('error');
+      setStatus('not_configured');
     }
   }, []);
 

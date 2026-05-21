@@ -28,7 +28,7 @@ export default function AuthenticatedError({
             再試行する
           </button>
           <Link
-            href="/dashboard"
+            href="/deals"
             className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-sm"
           >
             ダッシュボードへ

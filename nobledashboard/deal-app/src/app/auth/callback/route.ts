@@ -38,7 +38,7 @@ function authDebug(event: string, payload: Record<string, unknown>) {
 
 function sanitizeNextPath(nextPath: string | null) {
   if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//')) {
-    return '/dashboard';
+    return '/deals';
   }
 
   return nextPath;

@@ -11,10 +11,7 @@ type SessionPayload = {
 
 function getAuthSecret() {
   const secret = process.env.APP_AUTH_SECRET;
-  if (!secret) {
-    throw new Error('APP_AUTH_SECRET is missing');
-  }
-  return secret;
+  return secret ?? null;
 }
 
 function base64UrlEncode(input: Buffer | string) {
@@ -33,7 +30,9 @@ function base64UrlDecode(input: string) {
 }
 
 function sign(data: string) {
-  return crypto.createHmac('sha256', getAuthSecret()).update(data).digest('hex');
+  const secret = getAuthSecret();
+  if (!secret) throw new Error('APP_AUTH_SECRET is missing');
+  return crypto.createHmac('sha256', secret).update(data).digest('hex');
 }
 
 export function createSessionToken(payload: SessionPayload) {
@@ -78,9 +77,13 @@ export async function clearAppSessionCookie() {
 }
 
 export function readAppSessionCookie() {
-  const store = cookies();
-  const token = store.get(COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifySessionToken(token);
+  try {
+    const store = cookies();
+    const token = store.get(COOKIE_NAME)?.value;
+    if (!token) return null;
+    return verifySessionToken(token);
+  } catch {
+    // APP_AUTH_SECRET 未設定などで例外が飛ぶと API が 500(HTML) になりフロントが壊れるため、未ログイン扱いに倒す。
+    return null;
+  }
 }
-

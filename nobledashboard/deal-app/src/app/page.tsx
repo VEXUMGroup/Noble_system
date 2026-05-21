@@ -12,7 +12,7 @@ type LoginPageProps = {
 
 function sanitizeNextPath(nextPath?: string) {
   if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//')) {
-    return '/dashboard';
+    return '/deals';
   }
 
   return nextPath;

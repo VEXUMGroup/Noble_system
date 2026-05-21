@@ -6,9 +6,9 @@
     "node": ">=20 <21"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "/opt/homebrew/opt/node@20/bin/node ./node_modules/next/dist/bin/next dev",
+    "build": "/opt/homebrew/opt/node@20/bin/node ./node_modules/next/dist/bin/next build",
+    "start": "/opt/homebrew/opt/node@20/bin/node ./node_modules/next/dist/bin/next start",
     "lint": "next lint"
   },
   "dependencies": {

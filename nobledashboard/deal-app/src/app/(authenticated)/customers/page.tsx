@@ -25,6 +25,7 @@ export default function CustomersPage() {
   const { users } = useMasterData();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [deletingName, setDeletingName] = useState<string | null>(null);
 
   // ユーザー情報またはディール取得中のローディング状態
   const isLoading = userLoading || dealsLoading;
@@ -69,6 +70,20 @@ export default function CustomersPage() {
   const filteredCustomers = customers.filter((c) =>
     c.customerName.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleDeleteCustomerDeals = async (customerName: string) => {
+    const ok = window.confirm(`「${customerName}」の商談データを顧客管理から削除します。元に戻せません。`);
+    if (!ok) return;
+    setDeletingName(customerName);
+    const res = await fetch(`/api/customers/${encodeURIComponent(customerName)}`, { method: 'DELETE' });
+    const json = await res.json().catch(() => ({}));
+    setDeletingName(null);
+    if (!res.ok) {
+      window.alert(`削除に失敗しました: ${json?.error ?? res.statusText}`);
+      return;
+    }
+    router.refresh();
+  };
 
   return (
     <div className="space-y-6">
@@ -118,6 +133,23 @@ export default function CustomersPage() {
                 <span>最終商談日：{formatDate(c.latestDealDate)}</span>
                 <span>担当：{getUserName(c.assignedTo)}</span>
               </div>
+              <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/deals/${c.latestDealId}`)}
+                  className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  編集
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteCustomerDeals(c.customerName)}
+                  disabled={deletingName === c.customerName}
+                  className="px-3 py-1.5 text-xs text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deletingName === c.customerName ? '削除中...' : '削除'}
+                </button>
+              </div>
             </div>
           ))}
           {filteredCustomers.length === 0 && (
@@ -139,6 +171,7 @@ export default function CustomersPage() {
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">最新ステータス</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">最終商談日</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">担当者</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -155,11 +188,30 @@ export default function CustomersPage() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">{formatDate(c.latestDealDate)}</td>
                   <td className="px-6 py-4 text-sm text-gray-700">{getUserName(c.assignedTo)}</td>
+                  <td className="px-6 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/deals/${c.latestDealId}`)}
+                        className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        編集
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteCustomerDeals(c.customerName)}
+                        disabled={deletingName === c.customerName}
+                        className="px-3 py-1.5 text-xs text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {deletingName === c.customerName ? '削除中...' : '削除'}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {filteredCustomers.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-400">
                     顧客が見つかりません
                   </td>
                 </tr>

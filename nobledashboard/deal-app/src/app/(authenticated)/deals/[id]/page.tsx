@@ -261,6 +261,21 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setIsEditing(false);
   };
 
+  const handleDeleteDeal = () => {
+    if (!deal?.id) return;
+    const ok = window.confirm(`商談 ${deal.id} を削除します。元に戻せません。`);
+    if (!ok) return;
+    (async () => {
+      const res = await fetch(`/api/deals/${encodeURIComponent(deal.id)}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInterviewError(`削除に失敗しました: ${json?.error ?? res.statusText}`);
+        return;
+      }
+      router.push('/deals');
+    })();
+  };
+
   const selectClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
   const selectErrorClass = 'w-full px-3 py-2 border border-red-400 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-400';
   const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -374,6 +389,12 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 className="px-5 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm transition"
               >
                 キャンセル
+              </button>
+              <button
+                onClick={handleDeleteDeal}
+                className="px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-sm transition ml-auto"
+              >
+                この商談を削除
               </button>
             </div>
           </div>
