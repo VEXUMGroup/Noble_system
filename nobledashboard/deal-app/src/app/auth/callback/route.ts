@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
     return response;
   };
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+  const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
   if (exchangeError) {
     authDebug('exchange_code_for_session_failed', {
       message: exchangeError.message,
@@ -126,9 +126,9 @@ export async function GET(request: NextRequest) {
     return redirectWithError('oauth_exchange_failed');
   }
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  // provider_refresh_token は exchangeCodeForSession の戻り値にしか含まれない。
+  // getSession() を再呼び出しすると失われるため、ここで直接取り出す。
+  const session = exchangeData?.session ?? null;
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -138,6 +138,7 @@ export async function GET(request: NextRequest) {
     hasUser: Boolean(user),
     userId: user?.id ?? null,
     userEmail: user?.email ?? null,
+    hasProviderRefreshToken: Boolean(session?.provider_refresh_token),
     identityProviders: user?.identities?.map((identity) => identity.provider) ?? [],
   });
 
@@ -145,8 +146,7 @@ export async function GET(request: NextRequest) {
     return redirectWithError('missing_user_email');
   }
 
-  const providerRefreshToken = (session as unknown as { provider_refresh_token?: string })
-    ?.provider_refresh_token;
+  const providerRefreshToken = session.provider_refresh_token ?? null;
   const googleIdentity = user.identities?.find((identity) => identity.provider === 'google');
   const googleIdentityData =
     googleIdentity?.identity_data as { email?: string; sub?: string } | undefined;
