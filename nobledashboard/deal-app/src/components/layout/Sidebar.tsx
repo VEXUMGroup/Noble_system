@@ -48,7 +48,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: '顧客管理',
-    href: '/dashboard',
+    href: '/customers',
     icon: (
       <svg
         className="w-5 h-5"

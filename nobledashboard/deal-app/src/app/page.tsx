@@ -18,6 +18,11 @@ function sanitizeNextPath(nextPath?: string) {
   return nextPath;
 }
 
+async function clearInvalidSession() {
+  'use server';
+  clearAppSessionCookie();
+}
+
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const nextPath = sanitizeNextPath(searchParams?.next);
   const session = readAppSessionCookie();
@@ -39,7 +44,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     }
 
     // Session exists but member is invalid/inactive → clear session to avoid redirect loops.
-    clearAppSessionCookie();
+    await clearInvalidSession();
   }
 
   return (

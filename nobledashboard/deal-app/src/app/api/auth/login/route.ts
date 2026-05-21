@@ -48,6 +48,6 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json({ ok: true });
   // next/headers cookies() でセットするため、レスポンス返却前に実行
-  setAppSessionCookie(token);
+  await setAppSessionCookie(token);
   return response;
 }

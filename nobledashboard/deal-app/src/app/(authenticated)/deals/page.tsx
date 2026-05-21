@@ -10,6 +10,7 @@ import { useMasterData } from '@/lib/useMasterData';
 import { useDeals } from '@/lib/useDeals';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
+import { ICalSettingsBar } from '@/components/ICalSettingsBar';
 
 export default function DealsPage() {
   const router = useRouter();
@@ -94,6 +95,9 @@ export default function DealsPage() {
           <p className="text-blue-800 font-medium">読み込み中...</p>
         </div>
       )}
+
+      {/* カレンダー連携ステータスバー */}
+      <ICalSettingsBar />
 
       {/* Header */}
       <div className="flex items-center justify-between gap-3">

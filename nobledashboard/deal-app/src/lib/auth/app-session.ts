@@ -54,8 +54,9 @@ export function verifySessionToken(token: string): SessionPayload | null {
   return payload;
 }
 
-export function setAppSessionCookie(token: string) {
-  const store = cookies();
+export async function setAppSessionCookie(token: string) {
+  'use server';
+  const store = await cookies();
   store.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
@@ -64,8 +65,9 @@ export function setAppSessionCookie(token: string) {
   });
 }
 
-export function clearAppSessionCookie() {
-  const store = cookies();
+export async function clearAppSessionCookie() {
+  'use server';
+  const store = await cookies();
   store.set(COOKIE_NAME, '', {
     httpOnly: true,
     sameSite: 'lax',

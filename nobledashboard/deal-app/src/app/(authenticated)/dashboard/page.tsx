@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useDeals } from '@/lib/useDeals';
 import { useMasterData } from '@/lib/useMasterData';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import { GoogleCalendarPanel } from '@/components/GoogleCalendarPanel';
 
 // Icons
 const AlertCircle = ({ className }: { className?: string }) => (
@@ -297,8 +298,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Notifications Sidebar */}
-        <div>
+        {/* Notifications + Calendar Sidebar */}
+        <div className="space-y-6">
+          <div>
           <h2 className="text-lg font-semibold text-gray-900 mb-4">通知</h2>
           <div className="bg-white rounded-xl shadow-sm overflow-hidden divide-y divide-gray-200">
             {notifications.map((notification) => (
@@ -323,6 +325,10 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+          </div>
+
+          {/* Google カレンダーパネル */}
+          <GoogleCalendarPanel />
         </div>
       </div>
 
