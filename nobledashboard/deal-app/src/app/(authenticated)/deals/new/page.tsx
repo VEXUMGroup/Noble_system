@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { prospectLevels, agencyTypes } from '@/lib/constants';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useMasterData } from '@/lib/useMasterData';
+import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
 
 interface FormData {
   customer_name: string;
@@ -24,7 +25,7 @@ interface FormData {
 
 export default function NewDealPage() {
   const router = useRouter();
-  const { users, sources, statuses } = useMasterData();
+  const { users, sources, statuses, agencies } = useMasterData();
   const resultStatuses = statuses.filter(s => s.code.startsWith('RS_'));
 
 
@@ -269,13 +270,13 @@ export default function NewDealPage() {
           {/* 紹介者（代理店経由） */}
           <div>
             <label className={labelClass}>紹介者（代理店経由）</label>
-            <input
-              type="text"
-              name="referrer"
+            <AgencySearchSelect
               value={formData.referrer}
-              onChange={handleChange}
-              placeholder="例: 代理店A"
-              className={inputCls('referrer')}
+              onChange={(code) =>
+                setFormData((prev) => ({ ...prev, referrer: code }))
+              }
+              agencies={agencies.map((a) => ({ code: a.code, name: a.name }))}
+              placeholder="-- 未選択 --"
             />
           </div>
 
