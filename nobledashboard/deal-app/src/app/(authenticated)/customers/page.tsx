@@ -15,12 +15,17 @@ type CustomerSummary = {
   latestDealDate: string;
   assignedTo: string;
   latestDealId: string | number;
+  age?: string;
+  email?: string;
+  phone?: string;
 };
 
 export default function CustomersPage() {
   const router = useRouter();
-  const { userId, isLoading: userLoading } = useCurrentUser();
-  const { deals: rawDeals, isLoading: dealsLoading } = useDeals(userId ? { assigned_to: userId } : undefined);
+  const { userId, role, isLoading: userLoading } = useCurrentUser();
+  const { deals: rawDeals, isLoading: dealsLoading } = useDeals(
+    role === 'manager' ? undefined : userId ? { assigned_to: userId } : undefined
+  );
   const deals = rawDeals as unknown as Array<Record<string, any>>;
   const { users } = useMasterData();
 
@@ -36,10 +41,23 @@ export default function CustomersPage() {
   // Group deals by customer_name
   const customers: CustomerSummary[] = useMemo(() => {
     const map = new Map<string, CustomerSummary>();
+    const contractOrLater = new Set([
+      'CONTRACTED',
+      'DETAIL_ENTERED',
+      'APPROVED',
+      'CONTRACT_SIGNED',
+      'PAYMENT_MANAGING',
+      'COMPLETED',
+    ]);
 
     for (const deal of deals) {
+      if (!contractOrLater.has(String(deal.status ?? ''))) continue;
       const name: string = deal.customer_name ?? '（名前なし）';
       const existing = map.get(name);
+      const custom = (deal.custom_data ?? {}) as Record<string, unknown>;
+      const age = custom.age != null && custom.age !== '' ? String(custom.age) : '';
+      const email = custom.email != null && custom.email !== '' ? String(custom.email) : '';
+      const phone = custom.phone != null && custom.phone !== '' ? String(custom.phone) : '';
 
       if (!existing) {
         map.set(name, {
@@ -49,6 +67,9 @@ export default function CustomersPage() {
           latestDealDate: deal.deal_date,
           assignedTo: deal.assigned_to,
           latestDealId: deal.id,
+          age,
+          email,
+          phone,
         });
       } else {
         existing.dealCount += 1;
@@ -58,6 +79,9 @@ export default function CustomersPage() {
           existing.latestDealDate = deal.deal_date;
           existing.assignedTo = deal.assigned_to;
           existing.latestDealId = deal.id;
+          existing.age = age;
+          existing.email = email;
+          existing.phone = phone;
         }
       }
     }
@@ -132,6 +156,9 @@ export default function CustomersPage() {
                 <span>商談数：{c.dealCount} 件</span>
                 <span>最終商談日：{formatDate(c.latestDealDate)}</span>
                 <span>担当：{getUserName(c.assignedTo)}</span>
+                <span>年齢：{c.age || '-'}</span>
+                <span className="col-span-2">メール：{c.email || '-'}</span>
+                <span className="col-span-2">電話：{c.phone || '-'}</span>
               </div>
               <div className="mt-3 flex gap-2" onClick={(e) => e.stopPropagation()}>
                 <button
@@ -171,6 +198,9 @@ export default function CustomersPage() {
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">最新ステータス</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">最終商談日</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">担当者</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">年齢</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">メール</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">電話</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900 whitespace-nowrap">操作</th>
               </tr>
             </thead>
@@ -188,6 +218,9 @@ export default function CustomersPage() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">{formatDate(c.latestDealDate)}</td>
                   <td className="px-6 py-4 text-sm text-gray-700">{getUserName(c.assignedTo)}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">{c.age || '-'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700 max-w-[260px] truncate">{c.email || '-'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">{c.phone || '-'}</td>
                   <td className="px-6 py-4 text-sm" onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-2">
                       <button
@@ -211,7 +244,7 @@ export default function CustomersPage() {
               ))}
               {filteredCustomers.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-gray-400">
+                  <td colSpan={9} className="px-6 py-10 text-center text-sm text-gray-400">
                     顧客が見つかりません
                   </td>
                 </tr>

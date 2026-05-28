@@ -17,6 +17,7 @@ import { useMasterData } from '@/lib/useMasterData';
 import { getDeal } from '@/lib/supabase';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
+import { validateCustomDataOrThrow, type DealCustomFieldDefinition } from '@/lib/custom-fields';
 
 interface DealDetailPageProps {
   params: { id: string };
@@ -86,7 +87,14 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const [editRetirementDate, setEditRetirementDate] = useState('');
   const [editSourceCode, setEditSourceCode] = useState('');
   const [editAgencyCode, setEditAgencyCode] = useState('');
+  const [editResultStatus, setEditResultStatus] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editProspectLevel, setEditProspectLevel] = useState('');
+  const [editAgencyType, setEditAgencyType] = useState('');
   const [editMemo, setEditMemo] = useState('');
+  const [customFieldDefs, setCustomFieldDefs] = useState<DealCustomFieldDefinition[]>([]);
+  const [editCustomData, setEditCustomData] = useState<Record<string, any>>({});
 
   useEffect(() => {
     if (!deal) return;
@@ -96,8 +104,28 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setEditRetirementDate(deal.retirement_date ?? '');
     setEditSourceCode(deal.source ?? '');
     setEditAgencyCode(deal.agency_code ?? '');
+    setEditResultStatus(deal.result_status ?? '');
+    setEditEmail(deal.email ?? '');
+    setEditPhone(deal.phone ?? '');
+    setEditProspectLevel(deal.prospect_level ?? '');
+    setEditAgencyType(deal.agency_type ?? '');
     setEditMemo(deal.memo ?? '');
+    setEditCustomData((deal.custom_data ?? {}) as Record<string, any>);
   }, [deal]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch('/api/custom-fields', { cache: 'no-store' }).catch(() => null);
+      if (!res || cancelled) return;
+      const json = (await res.json().catch(() => null)) as { data?: DealCustomFieldDefinition[] } | null;
+      if (cancelled) return;
+      setCustomFieldDefs((json?.data ?? []).filter((d) => d.is_active !== false));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (dealLoading) {
     return (
@@ -218,6 +246,12 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     (async () => {
       try {
         const supabase = createSupabaseBrowserClient();
+        try {
+          validateCustomDataOrThrow(customFieldDefs, editCustomData ?? {});
+        } catch (e) {
+          setInterviewError(e instanceof Error ? e.message : 'カスタム項目の入力が不正です');
+          return;
+        }
         const payload = {
           customer_name: editCustomerName.trim(),
           assigned_to: editAssignedTo,
@@ -225,7 +259,13 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
           retirement_date: editRetirementDate || null,
           source: editSourceCode || null,
           agency_code: editAgencyCode || null,
+          result_status: editResultStatus || null,
+          email: editEmail || null,
+          phone: editPhone || null,
+          prospect_level: editProspectLevel || null,
+          agency_type: editAgencyType || null,
           memo: editMemo || null,
+          custom_data: editCustomData ?? {},
           updated_at: new Date().toISOString(),
         };
         console.log('Saving deal with payload:', payload);
@@ -257,7 +297,13 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setEditRetirementDate(deal.retirement_date);
     setEditSourceCode(deal.source ?? '');
     setEditAgencyCode(deal.agency_code ?? '');
+    setEditResultStatus(deal.result_status ?? '');
+    setEditEmail(deal.email ?? '');
+    setEditPhone(deal.phone ?? '');
+    setEditProspectLevel(deal.prospect_level ?? '');
+    setEditAgencyType(deal.agency_type ?? '');
     setEditMemo(deal.memo ?? '');
+    setEditCustomData((deal.custom_data ?? {}) as Record<string, any>);
     setIsEditing(false);
   };
 
@@ -346,12 +392,63 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 </select>
               </div>
               <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">結果ステータス</label>
+                <select value={editResultStatus} onChange={(e) => setEditResultStatus(e.target.value)} className={inputClass}>
+                  <option value="">-- 未選択 --</option>
+                  {resultStatuses.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">商談日</label>
                 <input type="date" value={editDealDate} onChange={(e) => setEditDealDate(e.target.value)} className={inputClass} />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">退職予定日</label>
                 <input type="date" value={editRetirementDate} onChange={(e) => setEditRetirementDate(e.target.value)} className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">年齢</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={String(editCustomData?.age ?? '')}
+                  onChange={(e) => setEditCustomData((prev) => ({ ...prev, age: e.target.value }))}
+                  className={inputClass}
+                  placeholder="例：60"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">メールアドレス</label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className={inputClass}
+                  placeholder="example@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">電話番号</label>
+                <input
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  className={inputClass}
+                  placeholder="090-xxxx-xxxx"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">見込み顧客</label>
+                <select value={editProspectLevel} onChange={(e) => setEditProspectLevel(e.target.value)} className={inputClass}>
+                  <option value="">-- 未選択 --</option>
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">流入経路</label>
@@ -363,7 +460,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">代理店</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">紹介者（代理店経由）</label>
                 <AgencySearchSelect
                   value={editAgencyCode}
                   onChange={(code) => setEditAgencyCode(code)}
@@ -371,11 +468,105 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                   placeholder="-- なし --"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">代理店新旧</label>
+                <select value={editAgencyType} onChange={(e) => setEditAgencyType(e.target.value)} className={inputClass}>
+                  <option value="">-- 未選択 --</option>
+                  <option value="新規">新規</option>
+                  <option value="既存">既存</option>
+                </select>
+              </div>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1">メモ</label>
               <textarea value={editMemo} onChange={(e) => setEditMemo(e.target.value)} rows={3} placeholder="備考・メモ" className={inputClass} />
             </div>
+            {customFieldDefs.length > 0 && (
+              <div className="pt-2">
+                <p className="text-xs font-semibold text-gray-500 mb-2">カスタム項目</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {customFieldDefs
+                    .slice()
+                    .sort((a, b) => (a.order_index - b.order_index) || (a.id - b.id))
+                    .map((def) => {
+                      const value = editCustomData?.[def.key_name];
+                      const options = Array.isArray(def.options_json) ? (def.options_json as any[]).map(String) : [];
+
+                      if (def.field_type === 'select') {
+                        return (
+                          <div key={def.id}>
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">
+                              {def.name}{def.required ? ' *' : ''}
+                            </label>
+                            <select
+                              value={typeof value === 'string' ? value : String(value ?? '')}
+                              onChange={(e) =>
+                                setEditCustomData((p) => ({ ...(p ?? {}), [def.key_name]: e.target.value || null }))
+                              }
+                              className={inputClass}
+                            >
+                              <option value="">-- 未選択 --</option>
+                              {options.map((o) => (
+                                <option key={o} value={o}>
+                                  {o}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      }
+
+                      if (def.field_type === 'checkbox') {
+                        const selected = Array.isArray(value) ? value.map(String) : [];
+                        return (
+                          <div key={def.id}>
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">
+                              {def.name}{def.required ? ' *' : ''}
+                            </label>
+                            <div className="flex flex-wrap gap-3 pt-2">
+                              {options.map((o) => (
+                                <label key={o} className="inline-flex items-center gap-2 text-sm text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={selected.includes(o)}
+                                    onChange={(e) => {
+                                      setEditCustomData((p) => {
+                                        const prev = (p ?? {}) as Record<string, any>;
+                                        const next = new Set(Array.isArray(prev[def.key_name]) ? prev[def.key_name].map(String) : []);
+                                        if (e.target.checked) next.add(o);
+                                        else next.delete(o);
+                                        return { ...prev, [def.key_name]: Array.from(next) };
+                                      });
+                                    }}
+                                  />
+                                  {o}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div key={def.id}>
+                          <label className="block text-xs font-semibold text-gray-500 mb-1">
+                            {def.name}{def.required ? ' *' : ''}
+                          </label>
+                          <input
+                            type={def.field_type === 'number' ? 'number' : def.field_type === 'date' ? 'date' : 'text'}
+                            value={value === null || value === undefined ? '' : String(value)}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setEditCustomData((p) => ({ ...(p ?? {}), [def.key_name]: v === '' ? null : v }));
+                            }}
+                            className={inputClass}
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
             <div className="flex gap-3 pt-2">
               <button
                 onClick={handleSaveCustomer}
@@ -402,11 +593,18 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
           /* ── 表示モード ── */
           <dl className="divide-y divide-gray-100">
             {[
-              ['担当者', users.find(u => u.id === deal.assigned_to)?.name ?? deal.assigned_to ?? '-'],
-              ['商談日', formatDate(deal.deal_date)],
-              ['退職予定日', deal.retirement_date],
-              ['流入経路', sources.find(s => s.code === (deal.source))?.name ?? deal.source ?? '-'],
-              ['代理店', agencies.find(a => a.code === deal.agency_code)?.name ?? deal.agency_code ?? '-'],
+              ['お客様氏名 *', deal.customer_name ?? '-'],
+              ['担当 *', users.find((u) => u.id === deal.assigned_to)?.name ?? deal.assigned_to ?? '-'],
+              ['結果ステータス', deal.result_status ?? '-'],
+              ['商談日 *', deal.deal_date ? formatDate(deal.deal_date) : '-'],
+              ['年齢', (deal.custom_data?.age ?? deal.age) ?? '-'],
+              ['メールアドレス', deal.email ?? deal.custom_data?.email ?? '-'],
+              ['電話番号', deal.phone ?? deal.custom_data?.phone ?? '-'],
+              ['見込み顧客', deal.prospect_level ?? '-'],
+              ['流入経路（エルステ経由） *', sources.find((s) => s.code === deal.source)?.name ?? deal.source ?? '-'],
+              ['紹介者（代理店経由）', agencies.find((a) => a.code === deal.agency_code)?.name ?? deal.agency_code ?? '-'],
+              ['退職予定日 *', deal.retirement_date ? formatDate(deal.retirement_date) : '-'],
+              ['代理店新旧', deal.agency_type ?? '-'],
               ['メモ', deal.memo || '-'],
             ].map(([label, value]) => (
               <div key={label} className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">
@@ -414,6 +612,27 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 <dd className="sm:col-span-2 text-sm text-gray-900">{value}</dd>
               </div>
             ))}
+
+            {customFieldDefs.length > 0 && (
+              <div className="py-3">
+                <dt className="text-sm font-medium text-gray-500 mb-2">カスタム項目</dt>
+                <div className="space-y-2">
+                  {customFieldDefs
+                    .slice()
+                    .sort((a, b) => (a.order_index - b.order_index) || (a.id - b.id))
+                    .map((def) => {
+                      const v = (deal.custom_data ?? {})[def.key_name];
+                      const display = Array.isArray(v) ? v.join(', ') : (v ?? '-');
+                      return (
+                        <div key={def.id} className="grid grid-cols-1 sm:grid-cols-3 gap-1">
+                          <div className="text-sm text-gray-500">{def.name}</div>
+                          <div className="sm:col-span-2 text-sm text-gray-900">{String(display)}</div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
 
             {deal.interview_status && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-3">

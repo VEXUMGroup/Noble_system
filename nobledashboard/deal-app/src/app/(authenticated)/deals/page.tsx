@@ -16,8 +16,10 @@ import { GoogleCalendarPanel } from '@/components/GoogleCalendarPanel';
 export default function DealsPage() {
   const router = useRouter();
   const { userId, role, isLoading: userLoading } = useCurrentUser();
+  const [dealsRefreshToken, setDealsRefreshToken] = useState(0);
   const { deals: rawDeals, isLoading: dealsLoading } = useDeals(
-    userId ? { assigned_to: userId } : undefined
+    role === 'manager' ? undefined : userId ? { assigned_to: userId } : undefined,
+    dealsRefreshToken
   );
   const deals = rawDeals as unknown as Array<Record<string, any>>;
   const { users, sources, agencies, isLoading: masterLoading } = useMasterData();
@@ -32,9 +34,20 @@ export default function DealsPage() {
   const getAgencyName = (code?: string) =>
     displayAgencies.find((a) => a.code === code)?.name ?? code ?? '-';
 
+  // 商談一覧では「成約以上」を表示しない（成約〜完了の内部ステータスを除外）
+  const hiddenStatuses = new Set([
+    'CONTRACTED',
+    'DETAIL_ENTERED',
+    'APPROVED',
+    'CONTRACT_SIGNED',
+    'PAYMENT_MANAGING',
+    'COMPLETED',
+  ]);
+  const visibleStatusKeys = Object.keys(STATUS_CONFIG).filter((status) => !hiddenStatuses.has(status));
+
   // Filter states - 担当者フィルターは現在のユーザーでプリセット
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [assignedToFilter, setAssignedToFilter] = useState<string>(userId || '');
+  const [assignedToFilter, setAssignedToFilter] = useState<string>(role === 'manager' ? '' : userId || '');
   const [dealDateFromFilter, setDealDateFromFilter] = useState<string>('');
   const [dealDateToFilter, setDealDateToFilter] = useState<string>('');
   const [agencyFilter, setAgencyFilter] = useState<string>('');
@@ -42,10 +55,10 @@ export default function DealsPage() {
 
   // userId が取得されたら assignedToFilter を更新
   useEffect(() => {
-    if (userId) {
+    if (role !== 'manager' && userId) {
       setAssignedToFilter(userId);
     }
-  }, [userId]);
+  }, [role, userId]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -53,6 +66,7 @@ export default function DealsPage() {
 
   // Apply filters
   const filteredDeals = deals.filter((deal) => {
+    if (hiddenStatuses.has(deal.status)) return false;
     if (statusFilter && deal.status !== statusFilter) return false;
     if (assignedToFilter && deal.assigned_to !== assignedToFilter) return false;
     if (dealDateFromFilter && new Date(deal.deal_date) < new Date(dealDateFromFilter)) return false;
@@ -101,7 +115,7 @@ export default function DealsPage() {
       <ICalSettingsBar />
 
       {/* カレンダー予定（商談化導線） */}
-      <GoogleCalendarPanel />
+      <GoogleCalendarPanel onDealCreated={() => setDealsRefreshToken((v) => v + 1)} />
 
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
@@ -126,7 +140,7 @@ export default function DealsPage() {
               className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">すべて</option>
-              {Object.keys(STATUS_CONFIG).map((status) => (
+              {visibleStatusKeys.map((status) => (
                 <option key={status} value={status}>
                   {STATUS_CONFIG[status].label}
                 </option>

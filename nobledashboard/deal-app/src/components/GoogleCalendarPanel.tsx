@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { DealRegisterModal } from '@/components/DealRegisterModal';
+import type { DealAutoFields } from '@/components/DealRegisterModal';
+import type { DealCustomFieldDefinition, DealCustomFieldType } from '@/lib/custom-fields';
+import { useCurrentUser } from '@/lib/user-context';
+import { getAgencies, getSources, type MAgency, type MSource } from '@/lib/supabase';
 
 type CalendarEvent = {
   id?: string | null;
@@ -12,14 +17,35 @@ type CalendarEvent = {
   htmlLink?: string | null;
 };
 
-async function safeReadJson(res: Response): Promise<any> {
+function formatDateTimeJst(raw: string): string {
+  if (!raw) return '';
+  // date-only (all-day) is already in local calendar date semantics
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const date = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short',
+  }).format(d);
+  const time = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d);
+  return `${date} ${time}`;
+}
+
+async function safeReadJson(res: Response, context: string): Promise<any> {
   const contentType = res.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
     return await res.json();
   }
   const text = await res.text();
   const head = text.slice(0, 120).replace(/\s+/g, ' ').trim();
-  throw new Error(`non_json_response status=${res.status} head=${head}`);
+  console.error(`[safeReadJson] non-json response context=${context} status=${res.status} head=${head}`);
+  return { error: `non_json_response context=${context} status=${res.status} head=${head}` };
 }
 
 function formatStart(event: CalendarEvent): string {
@@ -27,14 +53,15 @@ function formatStart(event: CalendarEvent): string {
   if (!raw) return '';
   if (!event.start?.dateTime && event.start?.date) {
     const d = new Date(event.start.date + 'T00:00:00');
-    return d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' }) + ' 終日';
+    const date = new Intl.DateTimeFormat('ja-JP', {
+      timeZone: 'Asia/Tokyo',
+      month: 'numeric',
+      day: 'numeric',
+      weekday: 'short',
+    }).format(d);
+    return date + ' 終日';
   }
-  const d = new Date(raw);
-  return (
-    d.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' }) +
-    ' ' +
-    d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
-  );
+  return formatDateTimeJst(raw);
 }
 
 function extractRetirementDateFromDescription(description?: string | null): string {
@@ -52,8 +79,37 @@ function extractRetirementDateFromDescription(description?: string | null): stri
   return '';
 }
 
-export function GoogleCalendarPanel() {
+function extractCustomerNameFromDescription(description?: string | null): string {
+  if (!description) return '';
+  const lines = description.split('\n').map((v) => v.trim()).filter(Boolean);
+  for (const line of lines) {
+    const matched = line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);
+    if (!matched) continue;
+    if (!matched[1].includes('氏名')) continue;
+    return matched[2].trim();
+  }
+  return '';
+}
+
+function extractFieldFromDescription(description: string | null | undefined, fieldName: string): string {
+  if (!description) return '';
+  const lines = description.split('\n').map((v) => v.trim()).filter(Boolean);
+  for (const line of lines) {
+    const matched = line.match(/^([^:：]+)\s*[:：]\s*(.*)$/);
+    if (!matched) continue;
+    if (!matched[1].includes(fieldName)) continue;
+    return matched[2].trim();
+  }
+  return '';
+}
+
+type GoogleCalendarPanelProps = {
+  onDealCreated?: () => void;
+};
+
+export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps) {
   const router = useRouter();
+  const currentUser = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -66,6 +122,11 @@ export function GoogleCalendarPanel() {
   const [retirementDate, setRetirementDate] = useState('');
   const [registering, setRegistering] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
+  const [registerSuccess, setRegisterSuccess] = useState<string | null>(null);
+  const [customFieldDefs, setCustomFieldDefs] = useState<DealCustomFieldDefinition[]>([]);
+  const [customData, setCustomData] = useState<Record<string, any>>({});
+  const [sources, setSources] = useState<MSource[]>([]);
+  const [agencies, setAgencies] = useState<MAgency[]>([]);
   const initialized = useRef(false);
 
   const fetchEvents = useCallback(async () => {
@@ -79,7 +140,7 @@ export function GoogleCalendarPanel() {
         setError('ログインが切れています（再読み込みしてください）');
         return;
       }
-      const json = await safeReadJson(res);
+      const json = await safeReadJson(res, '/api/google/calendar/events');
 
       // 未設定 or 認証エラー → 設定ボタン表示
       if (json?.error === 'ical_not_configured' || json?.error === 'unauthorized') {
@@ -113,6 +174,44 @@ export function GoogleCalendarPanel() {
     void fetchEvents();
   }, [fetchEvents]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch('/api/custom-fields', { cache: 'no-store' }).catch(() => null);
+      if (!res || cancelled) return;
+      const json = (await res.json().catch(() => null)) as { data?: DealCustomFieldDefinition[] } | null;
+      if (cancelled) return;
+      setCustomFieldDefs((json?.data ?? []).filter((d) => d.is_active !== false));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const data = await getSources(true);
+      if (cancelled) return;
+      setSources(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const data = await getAgencies(true);
+      if (cancelled) return;
+      setAgencies(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
@@ -126,7 +225,7 @@ export function GoogleCalendarPanel() {
         setSaveError('ログインが切れています（再読み込みしてください）');
         return;
       }
-      const json = await safeReadJson(res);
+      const json = await safeReadJson(res, '/api/user/ical-url');
       if (!res.ok) {
         setSaveError(json?.error ?? '保存に失敗しました');
         return;
@@ -141,10 +240,12 @@ export function GoogleCalendarPanel() {
     }
   };
 
-  const handleCalendarRegister = async () => {
-    if (!selectedEvent?.id || !retirementDate) return;
+  const handleCalendarRegister = async (updatedFields: DealAutoFields) => {
+    // UpdatedFields contains the possibly edited auto‑filled data.
+    if (!selectedEvent?.id) return;
     setRegistering(true);
     setRegisterError(null);
+    setRegisterSuccess(null);
     try {
       const res = await fetch('/api/deals/from-calendar', {
         method: 'POST',
@@ -157,22 +258,46 @@ export function GoogleCalendarPanel() {
             end: selectedEvent.end?.dateTime ?? selectedEvent.end?.date,
             description: selectedEvent.description,
           },
-          retirement_date: retirementDate,
+          // Use the possibly edited retirement date from the modal
+          retirement_date: updatedFields?.退職予定日 ?? retirementDate,
+          customer_name: updatedFields?.顧客名,
+          deal_date: updatedFields?.商談日,
+          source: updatedFields?.流入経路,
+          agency_code: updatedFields?.紹介者,
+          custom_data: {
+            ...(customData ?? {}),
+            age: updatedFields?.年齢 ? Number(String(updatedFields.年齢).replace(/[^\d]/g, '')) || updatedFields.年齢 : undefined,
+            email: updatedFields?.メールアドレス ?? undefined,
+            phone: updatedFields?.電話番号 ?? undefined,
+          },
         }),
       });
-      const json = await res.json();
+      const json = await safeReadJson(res, '/api/deals/from-calendar');
       if (!res.ok) {
-        setRegisterError(json?.message ?? json?.error ?? '登録に失敗しました');
-        return;
+        const message = json?.message ?? json?.error ?? '登録に失敗しました';
+        setRegisterError(message);
+        throw new Error(message);
+      }
+      // Optimistically update UI without requiring a reload.
+      const eventId = selectedEvent.id;
+      if (eventId) {
+        setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
       }
       setSelectedEvent(null);
       setRetirementDate('');
-      router.push('/deals');
+      setCustomData({});
+      setRegisterSuccess('商談を追加しました');
+      void fetchEvents();
+      onDealCreated?.();
+      return;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '登録に失敗しました';
+      setRegisterError((prev) => prev ?? message);
+      throw e;
     } finally {
       setRegistering(false);
     }
   };
-
   const handleDisconnect = async () => {
     await fetch('/api/user/ical-url', { method: 'DELETE' });
     setIcalConfigured(false);
@@ -276,6 +401,11 @@ export function GoogleCalendarPanel() {
           {`エラー: ${error}`}
         </div>
       )}
+      {registerSuccess && (
+        <div className="mx-4 sm:mx-6 my-3 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
+          {registerSuccess}
+        </div>
+      )}
 
       {/* イベントリスト */}
       <div className="divide-y divide-gray-50">
@@ -304,6 +434,16 @@ export function GoogleCalendarPanel() {
                   setSelectedEvent(ev);
                   setRetirementDate(extractRetirementDateFromDescription(ev.description));
                   setRegisterError(null);
+                  setRegisterSuccess(null);
+                  const ageRaw = extractFieldFromDescription(ev.description, '年齢');
+                  const email = extractFieldFromDescription(ev.description, 'メールアドレス');
+                  const phone = extractFieldFromDescription(ev.description, '電話番号');
+                  const ageNum = ageRaw ? Number(String(ageRaw).replace(/[^\d]/g, '')) : NaN;
+                  setCustomData({
+                    age: Number.isFinite(ageNum) ? ageNum : ageRaw,
+                    email,
+                    phone,
+                  });
                 }}
                 className="w-full text-left px-4 sm:px-6 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors"
               >
@@ -318,77 +458,38 @@ export function GoogleCalendarPanel() {
               </button>
             );
           })}
-      </div>
-
-      {/* モーダル */}
       {selectedEvent && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg p-5 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="font-semibold text-gray-900">商談として登録</h3>
-                <p className="text-sm text-gray-700 truncate">{selectedEvent.summary ?? '（タイトルなし）'}</p>
-                <p className="text-xs text-gray-500 mt-0.5">開始: {formatStart(selectedEvent)}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedEvent(null);
-                  setRegisterError(null);
-                }}
-                className="px-2 py-1 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
-              >
-                ×
-              </button>
-            </div>
+  <DealRegisterModal
+    isOpen={true}
+    onClose={() => {
+      setSelectedEvent(null);
+      setRegisterError(null);
+    }}
+    eventDetails={{
+      タイトル: selectedEvent.summary ?? '',
+      説明: selectedEvent.description ?? '',
+      開始: formatDateTimeJst(selectedEvent.start?.dateTime ?? selectedEvent.start?.date ?? ''),
+      終了: formatDateTimeJst(selectedEvent.end?.dateTime ?? selectedEvent.end?.date ?? ''),
+    }}
+    autoFields={{
+      顧客名: extractCustomerNameFromDescription(selectedEvent.description) || (selectedEvent.summary ?? ''),
+      担当者: currentUser.name,
+      退職予定日: retirementDate,
+      商談日: (selectedEvent.start?.dateTime ?? selectedEvent.start?.date ?? '').slice(0, 10),
+      年齢: extractFieldFromDescription(selectedEvent.description, '年齢'),
+      メールアドレス: extractFieldFromDescription(selectedEvent.description, 'メールアドレス'),
+      電話番号: extractFieldFromDescription(selectedEvent.description, '電話番号'),
+      流入経路: '',
+      紹介者: '',
+    }}
+    sources={sources.map((s) => ({ code: s.code, name: s.name }))}
+    agencies={agencies.map((a) => ({ code: a.code, name: a.name }))}
+    onConfirm={handleCalendarRegister}
+  />
+)}
+</div>
 
-            <div>
-              <label className="text-sm text-gray-700">説明（事前入力）</label>
-              <textarea
-                value={selectedEvent.description ?? ''}
-                readOnly
-                className="w-full border rounded p-2 text-xs text-gray-600 bg-gray-50"
-                rows={3}
-              />
-            </div>
 
-            <div>
-              <label className="text-sm text-gray-700">
-                退職予定日 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={retirementDate}
-                onChange={(e) => setRetirementDate(e.target.value)}
-                className="w-full border rounded p-2 text-sm"
-              />
-            </div>
-
-            {registerError && <p className="text-xs text-red-600">{registerError}</p>}
-
-            <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedEvent(null);
-                  setRegisterError(null);
-                }}
-                className="px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded"
-              >
-                キャンセル
-              </button>
-              <button
-                type="button"
-                onClick={handleCalendarRegister}
-                disabled={registering || !retirementDate}
-                className="px-3 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50"
-              >
-                {registering ? '登録中...' : '商談として登録'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

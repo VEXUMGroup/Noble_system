@@ -13,6 +13,9 @@ interface FormData {
   deal_date: string;
   source: string;
   retirement_date: string;
+  age: string;
+  email: string;
+  phone: string;
   result_status: string;
   prospect_level: string;
   referrer: string;
@@ -35,6 +38,9 @@ export default function NewDealPage() {
     deal_date: '',
     source: '',
     retirement_date: '',
+    age: '',
+    email: '',
+    phone: '',
     result_status: '',
     prospect_level: '',
     referrer: '',
@@ -81,6 +87,11 @@ export default function NewDealPage() {
       source: formData.source,
       status: 'NEW', // マイグレーション 003 実行後は NULL 許容に変更予定
       retirement_date: formData.retirement_date,
+      custom_data: {
+        age: formData.age ? Number(String(formData.age).replace(/[^\d]/g, '')) || formData.age : undefined,
+        email: formData.email || undefined,
+        phone: formData.phone || undefined,
+      },
       result_status: formData.result_status || undefined,
       prospect_level: formData.prospect_level || undefined,
       referrer: formData.referrer || undefined,
@@ -230,6 +241,46 @@ export default function NewDealPage() {
               className={inputCls('deal_date')}
             />
             {errors.deal_date && <p className="text-red-500 text-xs mt-1">{errors.deal_date}</p>}
+          </div>
+
+          {/* 年齢 */}
+          <div>
+            <label className={labelClass}>年齢</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              name="age"
+              value={formData.age}
+              onChange={handleChange}
+              placeholder="例：60"
+              className={inputCls('age')}
+            />
+          </div>
+
+          {/* メールアドレス */}
+          <div>
+            <label className={labelClass}>メールアドレス</label>
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              placeholder="example@example.com"
+              className={inputCls('email')}
+            />
+          </div>
+
+          {/* 電話番号 */}
+          <div>
+            <label className={labelClass}>電話番号</label>
+            <input
+              type="tel"
+              name="phone"
+              value={formData.phone}
+              onChange={handleChange}
+              placeholder="090-xxxx-xxxx"
+              className={inputCls('phone')}
+            />
           </div>
 
           {/* 見込み顧客 */}
