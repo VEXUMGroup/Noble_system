@@ -1,92 +1,167 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { DealRegisterModal } from '@/components/DealRegisterModal';
+import type { DealAutoFields } from '@/components/DealRegisterModal';
+import type { DealCustomFieldDefinition, DealCustomFieldType } from '@/lib/custom-fields';
+import { useCurrentUser } from '@/lib/user-context';
+import { getAgencies, getSources, type MAgency, type MSource } from '@/lib/supabase';
 
 type CalendarEvent = {
   id?: string | null;
   summary?: string | null;
   start?: { dateTime?: string | null; date?: string | null } | null;
   end?: { dateTime?: string | null; date?: string | null } | null;
+  description?: string | null;
   htmlLink?: string | null;
 };
 
-export function GoogleCalendarPanel() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const [loading, setLoading] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
+function formatDateTimeJst(raw: string): string {
+  if (!raw) return '';
+  // date-only (all-day) is already in local calendar date semantics
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const date = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short',
+  }).format(d);
+  const time = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d);
+  return `${date} ${time}`;
+}
+
+async function safeReadJson(res: Response, context: string): Promise<any> {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    return await res.json();
+  }
+  const text = await res.text();
+  const head = text.slice(0, 120).replace(/\s+/g, ' ').trim();
+  console.error(`[safeReadJson] non-json response context=${context} status=${res.status} head=${head}`);
+  return { error: `non_json_response context=${context} status=${res.status} head=${head}` };
+}
+
+function formatStart(event: CalendarEvent): string {
+  const raw = event.start?.dateTime ?? event.start?.date ?? '';
+  if (!raw) return '';
+  if (!event.start?.dateTime && event.start?.date) {
+    const d = new Date(event.start.date + 'T00:00:00');
+    const date = new Intl.DateTimeFormat('ja-JP', {
+      timeZone: 'Asia/Tokyo',
+      month: 'numeric',
+      day: 'numeric',
+      weekday: 'short',
+    }).format(d);
+    return date + ' 終日';
+  }
+  return formatDateTimeJst(raw);
+}
+
+function extractRetirementDateFromDescription(description?: string | null): string {
+  if (!description) return '';
+  const lines = description.split('\n').map((v) => v.trim()).filter(Boolean);
+  for (const line of lines) {
+    const matched = line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);
+    if (!matched) continue;
+    if (!matched[1].includes('退職予定日')) continue;
+    const raw = matched[2].replace(/[年月./]/g, '-').replace(/日/g, '').replace(/\s+/g, '').trim();
+    const m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!m) continue;
+    return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  }
+  return '';
+}
+
+function extractCustomerNameFromDescription(description?: string | null): string {
+  if (!description) return '';
+  const lines = description.split('\n').map((v) => v.trim()).filter(Boolean);
+  for (const line of lines) {
+    const matched = line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);
+    if (!matched) continue;
+    if (!matched[1].includes('氏名')) continue;
+    return matched[2].trim();
+  }
+  return '';
+}
+
+function extractFieldFromDescription(description: string | null | undefined, fieldName: string): string {
+  if (!description) return '';
+  const lines = description.split('\n').map((v) => v.trim()).filter(Boolean);
+  for (const line of lines) {
+    const matched = line.match(/^([^:：]+)\s*[:：]\s*(.*)$/);
+    if (!matched) continue;
+    if (!matched[1].includes(fieldName)) continue;
+    return matched[2].trim();
+  }
+  return '';
+}
+
+type GoogleCalendarPanelProps = {
+  onDealCreated?: () => void;
+};
+
+export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps) {
+  const router = useRouter();
+  const currentUser = useCurrentUser();
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-
-  const connect = useCallback(async () => {
-    setError(null);
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
-    if (!appUrl) {
-      setError('NEXT_PUBLIC_APP_URL is missing');
-      return;
-    }
-
-    const redirectTo = `${appUrl}/auth/callback`;
-    const { error: signInError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo,
-        scopes: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
-    });
-
-    if (signInError) setError(signInError.message);
-  }, [supabase]);
-
-  const disconnect = useCallback(async () => {
-    setError(null);
-    setDisconnecting(true);
-    try {
-      const res = await fetch('/api/google/calendar/connection', {
-        method: 'DELETE',
-      });
-      const json = await res.json();
-
-      if (!res.ok) {
-        setError(json?.error ?? 'google_disconnect_failed');
-        return;
-      }
-
-      setEvents([]);
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'google_disconnect_failed');
-    } finally {
-      setDisconnecting(false);
-    }
-  }, []);
-
-  const signOut = useCallback(async () => {
-    setError(null);
-    setSigningOut(true);
-    const { error: signOutError } = await supabase.auth.signOut();
-    if (signOutError) setError(signOutError.message);
-    setSigningOut(false);
-  }, [supabase]);
+  const [icalConfigured, setIcalConfigured] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [inputUrl, setInputUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [retirementDate, setRetirementDate] = useState('');
+  const [registering, setRegistering] = useState(false);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const [registerSuccess, setRegisterSuccess] = useState<string | null>(null);
+  const [customFieldDefs, setCustomFieldDefs] = useState<DealCustomFieldDefinition[]>([]);
+  const [customData, setCustomData] = useState<Record<string, any>>({});
+  const [sources, setSources] = useState<MSource[]>([]);
+  const [agencies, setAgencies] = useState<MAgency[]>([]);
+  const initialized = useRef(false);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/google/calendar/events', { cache: 'no-store' });
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json?.error ?? 'failed');
+      if (res.redirected) {
+        setIcalConfigured(false);
+        setEvents([]);
+        setError('ログインが切れています（再読み込みしてください）');
+        return;
+      }
+      const json = await safeReadJson(res, '/api/google/calendar/events');
+
+      // 未設定 or 認証エラー → 設定ボタン表示
+      if (json?.error === 'ical_not_configured' || json?.error === 'unauthorized') {
+        setIcalConfigured(false);
         setEvents([]);
         return;
       }
+
+      // URL は設定済みだが iCal fetch 失敗（configured: true が付いてくる）
+      if (json?.configured === true && json?.error) {
+        setIcalConfigured(true);
+        setError('カレンダーの取得に失敗しました。URL を確認してください。');
+        setEvents([]);
+        return;
+      }
+
+      setIcalConfigured(true);
       setEvents(json.items ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'failed');
+      setIcalConfigured(false);
+      setError(e instanceof Error ? e.message : 'calendar_fetch_failed');
       setEvents([]);
     } finally {
       setLoading(false);
@@ -94,91 +169,327 @@ export function GoogleCalendarPanel() {
   }, []);
 
   useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
     void fetchEvents();
   }, [fetchEvents]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch('/api/custom-fields', { cache: 'no-store' }).catch(() => null);
+      if (!res || cancelled) return;
+      const json = (await res.json().catch(() => null)) as { data?: DealCustomFieldDefinition[] } | null;
+      if (cancelled) return;
+      setCustomFieldDefs((json?.data ?? []).filter((d) => d.is_active !== false));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const data = await getSources(true);
+      if (cancelled) return;
+      setSources(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const data = await getAgencies(true);
+      if (cancelled) return;
+      setAgencies(data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch('/api/user/ical-url', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ical_url: inputUrl }),
+      });
+      if (res.redirected) {
+        setSaveError('ログインが切れています（再読み込みしてください）');
+        return;
+      }
+      const json = await safeReadJson(res, '/api/user/ical-url');
+      if (!res.ok) {
+        setSaveError(json?.error ?? '保存に失敗しました');
+        return;
+      }
+      setShowForm(false);
+      setInputUrl('');
+      void fetchEvents();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : '保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCalendarRegister = async (updatedFields: DealAutoFields) => {
+    // UpdatedFields contains the possibly edited auto‑filled data.
+    if (!selectedEvent?.id) return;
+    setRegistering(true);
+    setRegisterError(null);
+    setRegisterSuccess(null);
+    try {
+      const res = await fetch('/api/deals/from-calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: {
+            id: selectedEvent.id,
+            summary: selectedEvent.summary,
+            start: selectedEvent.start?.dateTime ?? selectedEvent.start?.date,
+            end: selectedEvent.end?.dateTime ?? selectedEvent.end?.date,
+            description: selectedEvent.description,
+          },
+          // Use the possibly edited retirement date from the modal
+          retirement_date: updatedFields?.退職予定日 ?? retirementDate,
+          customer_name: updatedFields?.顧客名,
+          deal_date: updatedFields?.商談日,
+          source: updatedFields?.流入経路,
+          agency_code: updatedFields?.紹介者,
+          custom_data: {
+            ...(customData ?? {}),
+            age: updatedFields?.年齢 ? Number(String(updatedFields.年齢).replace(/[^\d]/g, '')) || updatedFields.年齢 : undefined,
+            email: updatedFields?.メールアドレス ?? undefined,
+            phone: updatedFields?.電話番号 ?? undefined,
+          },
+        }),
+      });
+      const json = await safeReadJson(res, '/api/deals/from-calendar');
+      if (!res.ok) {
+        const message = json?.message ?? json?.error ?? '登録に失敗しました';
+        setRegisterError(message);
+        throw new Error(message);
+      }
+      // Optimistically update UI without requiring a reload.
+      const eventId = selectedEvent.id;
+      if (eventId) {
+        setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
+      }
+      setSelectedEvent(null);
+      setRetirementDate('');
+      setCustomData({});
+      setRegisterSuccess('商談を追加しました');
+      void fetchEvents();
+      onDealCreated?.();
+      return;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '登録に失敗しました';
+      setRegisterError((prev) => prev ?? message);
+      throw e;
+    } finally {
+      setRegistering(false);
+    }
+  };
+  const handleDisconnect = async () => {
+    await fetch('/api/user/ical-url', { method: 'DELETE' });
+    setIcalConfigured(false);
+    setEvents([]);
+  };
+
   return (
-    <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Googleカレンダー連携</h2>
-          <p className="text-sm text-gray-500">自分のGoogle予定（primary）をサーバー側API経由で取得します</p>
+    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <svg className="w-5 h-5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth="2" />
+            <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" strokeLinecap="round" />
+            <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" strokeLinecap="round" />
+            <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          <h2 className="text-base font-semibold text-gray-900">今後の予定（7日間）</h2>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={connect}
-            className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
-          >
-            Google連携
-          </button>
-          <button
-            onClick={disconnect}
-            className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium"
-            disabled={disconnecting}
-          >
-            {disconnecting ? '解除中...' : '連携解除'}
-          </button>
-          <button
-            onClick={signOut}
-            className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium"
-            disabled={signingOut}
-          >
-            {signingOut ? 'ログアウト中...' : 'アプリをログアウト'}
-          </button>
+        <div className="flex items-center gap-2">
+          {icalConfigured && !showForm && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="text-xs text-blue-500 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 transition"
+            >
+              URL変更
+            </button>
+          )}
+          {icalConfigured && (
+            <button
+              onClick={handleDisconnect}
+              className="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-gray-100 transition"
+            >
+              解除
+            </button>
+          )}
           <button
             onClick={fetchEvents}
-            className="px-3 py-2 rounded-lg bg-white border hover:bg-gray-50 text-gray-800 text-sm font-medium"
             disabled={loading}
+            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100 transition disabled:opacity-50"
           >
-            予定再取得
+            {loading ? '取得中...' : '更新'}
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
-          {error === 'google_not_connected'
-            ? 'Google連携がありません。Google連携を実行してください。'
-            : error === 'google_refresh_not_configured'
-              ? 'Google token更新用のサーバー環境変数が不足しています。'
-              : error === 'unauthorized_user'
-                ? '営業者マスタに紐づいていないため予定を取得できません。'
-            : `Error: ${error}`}
+      {/* iCal URL 未設定時 → 入力フォーム起動ボタン */}
+      {icalConfigured === false && !showForm && (
+        <div className="px-4 sm:px-6 py-8 text-center">
+          <p className="text-sm text-gray-500 mb-1">Google カレンダーと連携しますか？</p>
+          <p className="text-xs text-gray-400 mb-4">非公開 iCal URL を貼り付けるだけで予定が表示されます</p>
+          <button
+            onClick={() => setShowForm(true)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition"
+          >
+            iCal URL を設定する
+          </button>
         </div>
       )}
 
-      <div className="text-sm text-gray-700">
-        {loading ? (
-          <div>取得中...</div>
-        ) : events.length === 0 ? (
-          <div className="text-gray-500">予定がありません（または未連携）</div>
-        ) : (
-          <ul className="divide-y">
-            {events.map((ev, idx) => {
-              const start = ev.start?.dateTime ?? ev.start?.date ?? '';
-              const key = ev.id ?? `${start}-${idx}`;
-              return (
-                <li key={key} className="py-2 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-medium text-gray-900 truncate">{ev.summary ?? '(no title)'}</div>
-                    <div className="text-xs text-gray-500 truncate">{start}</div>
-                  </div>
-                  {ev.htmlLink && (
-                    <a
-                      href={ev.htmlLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-blue-600 hover:text-blue-700 whitespace-nowrap"
-                    >
-                      開く
-                    </a>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+      {/* URL 入力フォーム */}
+      {showForm && (
+        <div className="px-4 sm:px-6 py-5 space-y-3">
+          <div>
+            <p className="text-xs text-gray-500 mb-1 font-medium">
+              Google カレンダー → 設定 → カレンダーの統合 →「非公開 iCal URL」をコピーして貼り付けてください
+            </p>
+            <input
+              type="url"
+              value={inputUrl}
+              onChange={(e) => setInputUrl(e.target.value)}
+              placeholder="https://calendar.google.com/calendar/ical/..."
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {saveError && <p className="text-xs text-red-600">{saveError}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving || !inputUrl}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
+            >
+              {saving ? '保存中...' : '保存'}
+            </button>
+            <button
+              onClick={() => {
+                setShowForm(false);
+                setSaveError(null);
+              }}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* エラー */}
+      {error && (
+        <div className="mx-4 sm:mx-6 my-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+          {`エラー: ${error}`}
+        </div>
+      )}
+      {registerSuccess && (
+        <div className="mx-4 sm:mx-6 my-3 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
+          {registerSuccess}
+        </div>
+      )}
+
+      {/* イベントリスト */}
+      <div className="divide-y divide-gray-50">
+        {loading && (
+          <div className="px-6 py-8 text-center text-sm text-gray-400">
+            <div className="inline-block w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mb-2" />
+            <p>カレンダーを読み込み中...</p>
+          </div>
         )}
-      </div>
+
+        {!loading && icalConfigured && !error && events.length === 0 && (
+          <div className="px-6 py-8 text-center text-sm text-gray-400">今後7日間の予定はありません</div>
+        )}
+
+        {!loading &&
+          events.map((ev, idx) => {
+            const start = ev.start?.dateTime ?? ev.start?.date ?? '';
+            const key = ev.id ?? `${start}-${idx}`;
+            const isToday = start ? new Date(start).toDateString() === new Date().toDateString() : false;
+
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setSelectedEvent(ev);
+                  setRetirementDate(extractRetirementDateFromDescription(ev.description));
+                  setRegisterError(null);
+                  setRegisterSuccess(null);
+                  const ageRaw = extractFieldFromDescription(ev.description, '年齢');
+                  const email = extractFieldFromDescription(ev.description, 'メールアドレス');
+                  const phone = extractFieldFromDescription(ev.description, '電話番号');
+                  const ageNum = ageRaw ? Number(String(ageRaw).replace(/[^\d]/g, '')) : NaN;
+                  setCustomData({
+                    age: Number.isFinite(ageNum) ? ageNum : ageRaw,
+                    email,
+                    phone,
+                  });
+                }}
+                className="w-full text-left px-4 sm:px-6 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors"
+              >
+                <div className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${isToday ? 'bg-green-400' : 'bg-blue-300'}`} />
+                <div className="flex-grow min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{ev.summary ?? '（タイトルなし）'}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{formatStart(ev)}</p>
+                </div>
+                {ev.htmlLink && (
+                  <span className="text-xs text-blue-600 whitespace-nowrap flex-shrink-0">クリックで商談化</span>
+                )}
+              </button>
+            );
+          })}
+      {selectedEvent && (
+  <DealRegisterModal
+    isOpen={true}
+    onClose={() => {
+      setSelectedEvent(null);
+      setRegisterError(null);
+    }}
+    eventDetails={{
+      タイトル: selectedEvent.summary ?? '',
+      説明: selectedEvent.description ?? '',
+      開始: formatDateTimeJst(selectedEvent.start?.dateTime ?? selectedEvent.start?.date ?? ''),
+      終了: formatDateTimeJst(selectedEvent.end?.dateTime ?? selectedEvent.end?.date ?? ''),
+    }}
+    autoFields={{
+      顧客名: extractCustomerNameFromDescription(selectedEvent.description) || (selectedEvent.summary ?? ''),
+      担当者: currentUser.name,
+      退職予定日: retirementDate,
+      商談日: (selectedEvent.start?.dateTime ?? selectedEvent.start?.date ?? '').slice(0, 10),
+      年齢: extractFieldFromDescription(selectedEvent.description, '年齢'),
+      メールアドレス: extractFieldFromDescription(selectedEvent.description, 'メールアドレス'),
+      電話番号: extractFieldFromDescription(selectedEvent.description, '電話番号'),
+      流入経路: '',
+      紹介者: '',
+    }}
+    sources={sources.map((s) => ({ code: s.code, name: s.name }))}
+    agencies={agencies.map((a) => ({ code: a.code, name: a.name }))}
+    onConfirm={handleCalendarRegister}
+  />
+)}
+</div>
+
+
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { LoginCard } from '@/components/auth/LoginCard';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { clearAppSessionCookie, readAppSessionCookie } from '@/lib/auth/app-session';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 type LoginPageProps = {
   searchParams?: {
@@ -11,31 +12,39 @@ type LoginPageProps = {
 
 function sanitizeNextPath(nextPath?: string) {
   if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//')) {
-    return '/dashboard';
+    return '/deals';
   }
 
   return nextPath;
 }
 
+async function clearInvalidSession() {
+  'use server';
+  clearAppSessionCookie();
+}
+
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const supabase = createSupabaseServerClient();
   const nextPath = sanitizeNextPath(searchParams?.next);
+  const session = readAppSessionCookie();
+  if (session?.userId) {
+    try {
+      const supabase = createSupabaseAdminClient();
+      const { data: member } = await supabase
+        .from('m_users')
+        .select('id, is_active')
+        .eq('id', session.userId)
+        .eq('is_active', true)
+        .maybeSingle();
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (session?.user?.id) {
-    const { data: member } = await supabase
-      .from('m_users')
-      .select('id, is_active')
-      .eq('auth_user_id', session.user.id)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (member) {
-      redirect(nextPath);
+      if (member?.id) {
+        redirect(nextPath);
+      }
+    } catch {
+      // If the server cannot verify the member record, fall back to rendering login.
     }
+
+    // Session exists but member is invalid/inactive → clear session to avoid redirect loops.
+    await clearInvalidSession();
   }
 
   return (

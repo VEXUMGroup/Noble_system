@@ -220,9 +220,23 @@ export async function getStatuses(onlyActive = true) {
 
 export async function signOut() {
   try {
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase.auth.signOut();
-    if (error) throw new Error(error.message);
+    if (typeof window === 'undefined') {
+      throw new Error('signOut is only available on the client');
+    }
+
+    const res = await fetch('/api/auth/logout', { method: 'POST' });
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(payload?.error ?? 'logout_failed');
+    }
+
+    // Best-effort: clear any supabase browser session too (if it exists).
+    try {
+      const supabase = getSupabaseBrowserClient();
+      await supabase.auth.signOut();
+    } catch {
+      // ignore
+    }
   } catch (error) {
     console.error('Error signing out:', error);
     throw error;

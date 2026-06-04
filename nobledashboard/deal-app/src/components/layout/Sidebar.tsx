@@ -1,9 +1,13 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { signOut } from '@/lib/supabase';
 
-const navGroups = [
+type NavChild = { label: string; href: string };
+type NavGroup = { label: string; href: string; icon: JSX.Element; children?: NavChild[] };
+
+const navGroups: NavGroup[] = [
   {
     label: '商談一覧',
     href: '/deals',
@@ -44,7 +48,7 @@ const navGroups = [
   },
   {
     label: '顧客管理',
-    href: '/dashboard',
+    href: '/customers',
     icon: (
       <svg
         className="w-5 h-5"
@@ -109,6 +113,7 @@ interface SidebarProps {
 
 export function Sidebar({ currentUser, isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
 
   const getRoleLabel = (role: string): string => {
     const roleMap: Record<string, string> = {
@@ -130,6 +135,16 @@ export function Sidebar({ currentUser, isOpen = false, onClose }: SidebarProps) 
     // モバイルでリンクをクリックしたらサイドバーを閉じる
     if (onClose) {
       onClose();
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      router.push('/');
+      handleLinkClick();
+    } catch (error) {
+      console.error('Logout failed:', error);
     }
   };
 
@@ -228,7 +243,12 @@ export function Sidebar({ currentUser, isOpen = false, onClose }: SidebarProps) 
 
         {/* User Section */}
         <div className="p-6 border-t border-gray-700">
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 text-left hover:opacity-90 transition-opacity"
+            aria-label="ログアウト"
+          >
             <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
               {currentUser.name.charAt(0)}
             </div>
@@ -238,7 +258,7 @@ export function Sidebar({ currentUser, isOpen = false, onClose }: SidebarProps) 
                 {getRoleLabel(currentUser.role)}
               </p>
             </div>
-          </div>
+          </button>
         </div>
       </div>
     </>

@@ -43,7 +43,7 @@ export function getAuthErrorMessage(errorCode?: string | null): string | null {
 
 export function getSafeNextPath(nextPath?: string | null): string {
   if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//')) {
-    return '/dashboard';
+    return '/deals';
   }
 
   return nextPath;

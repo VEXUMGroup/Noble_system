@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getDeals, type DealFilters } from './supabase';
 
-export function useDeals(filters?: DealFilters) {
+export function useDeals(filters?: DealFilters, refreshToken?: unknown) {
   const [deals, setDeals] = useState<Record<string, unknown>[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,8 +30,7 @@ export function useDeals(filters?: DealFilters) {
     return () => {
       cancelled = true;
     };
-  }, [filters?.assigned_to, filters?.status]);
+  }, [filters?.assigned_to, filters?.status, refreshToken]);
 
   return { deals, isLoading, error };
 }
-

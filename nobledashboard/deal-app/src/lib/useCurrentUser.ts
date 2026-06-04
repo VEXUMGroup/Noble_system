@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createSupabaseBrowserClient } from './supabase/client';
 
 export interface CurrentUser {
   userId: string;
@@ -10,7 +9,7 @@ export interface CurrentUser {
 
 export function useCurrentUser() {
   const [userId, setUserId] = useState<string | null>(null);
-  const [role, setRole] = useState<'sales' | 'manager'>('sales');
+  const [role, setRole] = useState<'sales' | 'manager' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,33 +18,16 @@ export function useCurrentUser() {
 
     (async () => {
       try {
-        const supabase = createSupabaseBrowserClient();
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser();
-
-        if (authError) throw authError;
-
-        if (!user) {
+        const res = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (!res.ok) {
           setError('ユーザーが認証されていません');
           setUserId(null);
           return;
         }
-
-        // m_users テーブルから user_id と role を取得
-        const { data: member, error: memberError } = await supabase
-          .from('m_users')
-          .select('id, role')
-          .eq('auth_user_id', user.id)
-          .eq('is_active', true)
-          .maybeSingle();
-
-        if (memberError) throw memberError;
-
+        const payload = (await res.json()) as { userId?: string | null; role?: string | null };
         if (!cancelled) {
-          setUserId(member?.id ?? user.id);
-          setRole((member?.role ?? 'sales') as 'sales' | 'manager');
+          setUserId(payload.userId ?? null);
+          setRole(payload.role === 'manager' ? 'manager' : 'sales');
           setError(null);
         }
       } catch (e) {

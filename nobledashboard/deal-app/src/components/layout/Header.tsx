@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut } from '@/lib/supabase';
 
@@ -21,7 +21,6 @@ export function Header({
   onMenuToggle,
 }: HeaderProps) {
   const router = useRouter();
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const unreadCount = useMemo(
     () => (typeof unreadNotificationCount === 'number' ? unreadNotificationCount : 0),
     [unreadNotificationCount]
@@ -80,8 +79,9 @@ export function Header({
         {/* User Avatar and Name with Dropdown */}
         <div className="relative pl-4 md:pl-6 border-l border-gray-200">
           <button
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            onClick={handleLogout}
             className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+            aria-label="ログアウト"
           >
             <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-semibold">
               {currentUser.name.charAt(0)}
@@ -91,25 +91,6 @@ export function Header({
               <p className="text-xs text-gray-500">{currentUser.email}</p>
             </div>
           </button>
-
-          {/* Dropdown Menu */}
-          {isDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-              <div className="p-3 border-b border-gray-100">
-                <p className="font-medium text-gray-900 text-sm">{currentUser.name}</p>
-                <p className="text-xs text-gray-500">{currentUser.email}</p>
-              </div>
-              <button
-                onClick={() => {
-                  setIsDropdownOpen(false);
-                  handleLogout();
-                }}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-              >
-                ログアウト
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </header>

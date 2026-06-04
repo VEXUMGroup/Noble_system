@@ -1,47 +1,70 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { createSupabaseAdminClient } from './lib/supabase/admin';
+
+const COOKIE_NAME = 'app_session';
+
+function getAuthSecret() {
+  const secret = process.env.APP_AUTH_SECRET;
+  if (!secret) return null;
+  return secret;
+}
+
+async function signHex(secret: string, data: string) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
+  return Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function base64UrlDecode(input: string) {
+  const normalized = input.replaceAll('-', '+').replaceAll('_', '/');
+  const padded = normalized + '==='.slice((normalized.length + 3) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+async function readSessionFromCookie(request: NextRequest) {
+  const token = request.cookies.get(COOKIE_NAME)?.value;
+  const secret = getAuthSecret();
+  if (!token || !secret) return null;
+  const [encoded, signature] = token.split('.');
+  if (!encoded || !signature) return null;
+  if ((await signHex(secret, encoded)) !== signature) return null;
+  const decoded = base64UrlDecode(encoded);
+  const payload = JSON.parse(decoded) as { email?: string; userId?: string; exp?: number };
+  if (!payload?.email || !payload?.userId || typeof payload.exp !== 'number') return null;
+  if (Date.now() > payload.exp) return null;
+  return payload;
+}
 
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    '';
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return response;
-  }
-
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, options);
-        });
-      },
-    },
-  });
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await readSessionFromCookie(request);
+  if (!session) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = '/';
     loginUrl.searchParams.set('next', request.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);
   }
 
+  const supabase = createSupabaseAdminClient();
   const { data: member } = await supabase
     .from('m_users')
     .select('id, is_active')
-    .eq('auth_user_id', user.id)
+    .eq('id', session.userId)
     .eq('is_active', true)
     .maybeSingle();
 
@@ -57,5 +80,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/deals/:path*', '/master/:path*', '/review/:path*', '/payments/:path*'],
+  matcher: ['/deals/:path*', '/master/:path*', '/review/:path*', '/payments/:path*'],
 };

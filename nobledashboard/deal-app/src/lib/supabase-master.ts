@@ -79,12 +79,23 @@ export async function softDeleteMasterData(
 }
 
 /** マスタ編集権限（manager のみ） */
-export async function isMasterAdmin(email: string): Promise<boolean> {
+export async function isMasterAdmin(authUserId: string): Promise<boolean> {
   const supabase = getSupabaseBrowserClient();
-  const { data } = await supabase
+
+  // auth_user_id（Supabase認証ユーザーID）で検索
+  // m_users.id はカスタムID（例："USR001"）で、
+  // auth_user_id が Supabase auth.users.id と一致する
+  const { data, error } = await supabase
     .from('m_users')
     .select('role')
-    .eq('email', email)
+    .eq('auth_user_id', authUserId)
     .maybeSingle();
+
+  if (error) {
+    console.error('[isMasterAdmin] Error:', error.message);
+    return false;
+  }
+
+  console.log('[isMasterAdmin] Found user role:', data?.role);
   return data?.role === 'manager';
 }

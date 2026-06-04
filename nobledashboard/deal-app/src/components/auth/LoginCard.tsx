@@ -1,28 +1,36 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-
-const GOOGLE_CALENDAR_SCOPES =
-  'openid email profile https://www.googleapis.com/auth/calendar.readonly';
+import { useCallback, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 const ERROR_MESSAGES: Record<string, string> = {
   unauthorized_user:
     '営業者マスタに存在しないか、無効化されているためログインできません。',
-  oauth_exchange_failed: 'Googleログインのセッション交換に失敗しました。',
-  missing_google_refresh_token:
-    'Googleのrefresh tokenを取得できませんでした。Google連携設定を見直してください。',
+  oauth_exchange_failed: 'ログインのセッション交換に失敗しました。',
+  otp_send_failed: 'ログイン用メールの送信に失敗しました。',
+  otp_verify_failed: 'ログイン用リンクの検証に失敗しました。',
   member_link_failed: '営業者アカウントとの紐付けに失敗しました。',
-  google_account_save_failed: 'Google連携情報の保存に失敗しました。',
   member_already_linked: 'この営業者は別の認証アカウントに紐づいています。',
   missing_user_email: 'ログインに必要なメールアドレスを取得できませんでした。',
   missing_supabase_env: 'Supabaseの環境変数が不足しています。',
+  missing_auth_secret: 'ログイン用セッションの秘密鍵(APP_AUTH_SECRET)が不足しています。',
+  missing_callback_params: 'ログインに必要な情報が不足しています。',
 };
 
 type LoginCardProps = {
   initialError?: string | null;
   nextPath?: string;
 };
+
+async function safeReadJson(res: Response): Promise<any> {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    return await res.json();
+  }
+  const text = await res.text();
+  const head = text.slice(0, 120).replace(/\s+/g, ' ').trim();
+  return { error: `non_json_response status=${res.status} head=${head}` };
+}
 
 function buildRedirectUrl(nextPath: string) {
   const appUrl =
@@ -44,65 +52,54 @@ function isAuthDebugEnabled() {
 
 export function LoginCard({
   initialError = null,
-  nextPath = '/dashboard',
+  nextPath = '/deals',
 }: LoginCardProps) {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const router = useRouter();
   const [error, setError] = useState(initialError);
   const [submitting, setSubmitting] = useState(false);
+  const [email, setEmail] = useState('');
 
-  const handleGoogleLogin = useCallback(async () => {
+  const handleEmailLogin = useCallback(async () => {
     setSubmitting(true);
     setError(null);
 
     try {
-      const redirectTo = buildRedirectUrl(nextPath);
-      if (isAuthDebugEnabled()) {
-        // eslint-disable-next-line no-console
-        console.info('[auth-debug] start_oauth', {
-          nextPath,
-          redirectTo,
-          appUrlEnv: process.env.NEXT_PUBLIC_APP_URL ?? null,
-          locationOrigin: typeof window !== 'undefined' ? window.location.origin : null,
-        });
+      const normalizedEmail = email.trim();
+      if (!normalizedEmail) {
+        setError('メールアドレスを入力してください。');
+        return;
       }
-      const { error: signInError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo,
-          scopes: GOOGLE_CALENDAR_SCOPES,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
+
+      // SupabaseのOTPメールは使わず、m_usersに存在するかで即時ログインする
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail }),
       });
 
-      if (signInError) {
-        if (isAuthDebugEnabled()) {
-          // eslint-disable-next-line no-console
-          console.info('[auth-debug] signInWithOAuth_error', {
-            message: signInError.message,
-            name: signInError.name,
-            status: (signInError as unknown as { status?: number }).status,
-          });
-        }
-        setError(signInError.message);
+      if (!res.ok) {
+        const payload = (await safeReadJson(res).catch(() => null)) as { error?: string } | null;
+        setError(payload?.error ?? 'ログインに失敗しました。');
+        return;
       }
+
+      router.push(nextPath);
+      router.refresh();
     } catch (caughtError) {
       if (isAuthDebugEnabled()) {
         // eslint-disable-next-line no-console
-        console.info('[auth-debug] signInWithOAuth_throw', {
+        console.info('[auth-debug] email_login_throw', {
           error:
             caughtError instanceof Error
               ? { name: caughtError.name, message: caughtError.message }
               : caughtError,
         });
       }
-      setError(caughtError instanceof Error ? caughtError.message : 'Googleログインに失敗しました。');
+      setError(caughtError instanceof Error ? caughtError.message : 'ログインに失敗しました。');
     } finally {
       setSubmitting(false);
     }
-  }, [nextPath, supabase]);
+  }, [email, nextPath, router]);
 
   return (
     <div className="w-full max-w-md">
@@ -115,9 +112,9 @@ export function LoginCard({
         <p className="text-sm text-gray-500 mb-8">社会保険給付金サポート業務</p>
 
         <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
-          <p className="text-sm text-gray-600 font-medium mb-1">Googleログイン + Googleカレンダー連携</p>
+          <p className="text-sm text-gray-600 font-medium mb-1">メールアドレスでログイン</p>
           <p className="text-xs text-gray-500">
-            営業者マスタに登録済みかつ有効なメールアドレスのみログインできます。
+            `m_users` に登録済みかつ有効なメールアドレスのみログインできます。
           </p>
         </div>
 
@@ -127,17 +124,28 @@ export function LoginCard({
           </div>
         )}
 
+        <label className="block text-left text-sm font-medium text-gray-700 mb-2" htmlFor="email">
+          メールアドレス
+        </label>
+        <input
+          id="email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          disabled={submitting}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+          placeholder="you@example.com"
+        />
+
         <button
-          onClick={handleGoogleLogin}
+          onClick={handleEmailLogin}
           disabled={submitting}
           className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-4 rounded-lg transition duration-200 text-base"
         >
-          {submitting ? 'Googleへ遷移中...' : 'Googleでログイン'}
+          {submitting ? 'ログイン中...' : 'ログイン'}
         </button>
-
-        <p className="text-xs text-gray-400 mt-4">
-          カレンダー取得には `calendar.readonly` と offline access を要求します。
-        </p>
       </div>
     </div>
   );
