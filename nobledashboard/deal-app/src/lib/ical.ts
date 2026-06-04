@@ -8,6 +8,12 @@ export type ICalEvent = {
   url?: string;
 };
 
+export const SPECIAL_EVENT_PREFIX = '退職前サポート';
+
+export function isSpecialCalendarEvent(summary?: string | null): boolean {
+  return (summary ?? '').trim().startsWith(SPECIAL_EVENT_PREFIX);
+}
+
 function unfoldIcs(raw: string): string[] {
   return raw.replace(/\r\n[ \t]/g, '').split(/\r?\n/);
 }
@@ -122,6 +128,9 @@ export type CalendarDealDraft = {
 export type LStepCalendarProfile = {
   customerName?: string;
   retirementDate?: string;
+  age?: string;
+  email?: string;
+  phone?: string;
   noteLines: string[];
 };
 
@@ -151,6 +160,9 @@ export function parseLStepCalendarDescription(description?: string): LStepCalend
     if (key.includes('退職予定日') && !profile.retirementDate) {
       profile.retirementDate = normalizeDateTextToIso(value);
     }
+    if (key.includes('年齢') && !profile.age) profile.age = value;
+    if (key.includes('メールアドレス') && !profile.email) profile.email = value;
+    if (key.includes('電話番号') && !profile.phone) profile.phone = value;
     profile.noteLines.push(`${key}: ${value}`);
   }
 

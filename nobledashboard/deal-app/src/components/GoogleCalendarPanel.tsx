@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DealRegisterModal } from '@/components/DealRegisterModal';
 import type { DealAutoFields } from '@/components/DealRegisterModal';
-import type { DealCustomFieldDefinition, DealCustomFieldType } from '@/lib/custom-fields';
+import { validateCalendarDealInput } from '@/lib/calendar-deal-validation';
+import { isSpecialCalendarEvent } from '@/lib/ical';
 import { useCurrentUser } from '@/lib/user-context';
 import { getAgencies, getSources, type MAgency, type MSource } from '@/lib/supabase';
 
@@ -15,6 +16,7 @@ type CalendarEvent = {
   end?: { dateTime?: string | null; date?: string | null } | null;
   description?: string | null;
   htmlLink?: string | null;
+  is_special_event?: boolean | null;
 };
 
 function formatDateTimeJst(raw: string): string {
@@ -107,6 +109,8 @@ type GoogleCalendarPanelProps = {
   onDealCreated?: () => void;
 };
 
+type SpecialEventStatus = 'pending' | 'registered' | 'failed';
+
 export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps) {
   const router = useRouter();
   const currentUser = useCurrentUser();
@@ -120,14 +124,98 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [retirementDate, setRetirementDate] = useState('');
-  const [registering, setRegistering] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [registerSuccess, setRegisterSuccess] = useState<string | null>(null);
-  const [customFieldDefs, setCustomFieldDefs] = useState<DealCustomFieldDefinition[]>([]);
   const [customData, setCustomData] = useState<Record<string, any>>({});
   const [sources, setSources] = useState<MSource[]>([]);
   const [agencies, setAgencies] = useState<MAgency[]>([]);
+  const [specialEventStates, setSpecialEventStates] = useState<Record<string, SpecialEventStatus>>({});
+  const [specialEventDealIds, setSpecialEventDealIds] = useState<Record<string, string>>({});
   const initialized = useRef(false);
+  const specialEventInFlightRef = useRef<Set<string>>(new Set());
+
+  const setSpecialEventState = useCallback((eventId: string, status: SpecialEventStatus) => {
+    setSpecialEventStates((prev) => ({ ...prev, [eventId]: status }));
+  }, []);
+
+  const autoRegisterSpecialEvents = useCallback(
+    async (items: CalendarEvent[]) => {
+      const specialEvents = items.filter((ev) => {
+        const eventId = ev.id ?? '';
+        if (!eventId) return false;
+        return Boolean(ev.is_special_event ?? isSpecialCalendarEvent(ev.summary));
+      });
+
+      for (const ev of specialEvents) {
+        const eventId = ev.id ?? '';
+        if (!eventId) continue;
+        if (specialEventStates[eventId] === 'pending' || specialEventStates[eventId] === 'registered') {
+          continue;
+        }
+        if (specialEventInFlightRef.current.has(eventId)) {
+          continue;
+        }
+
+        specialEventInFlightRef.current.add(eventId);
+        setSpecialEventState(eventId, 'pending');
+        try {
+          const retirementDate = extractRetirementDateFromDescription(ev.description);
+          const customerName = extractCustomerNameFromDescription(ev.description) || ev.summary || '';
+          const ageRaw = extractFieldFromDescription(ev.description, '年齢');
+          const email = extractFieldFromDescription(ev.description, 'メールアドレス');
+          const phone = extractFieldFromDescription(ev.description, '電話番号');
+          const res = await fetch('/api/deals/from-calendar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: {
+                id: ev.id,
+                summary: ev.summary,
+                start: ev.start?.dateTime ?? ev.start?.date,
+                end: ev.end?.dateTime ?? ev.end?.date,
+                description: ev.description,
+              },
+              retirement_date: retirementDate || undefined,
+              customer_name: customerName,
+              deal_date: (ev.start?.dateTime ?? ev.start?.date ?? '').slice(0, 10),
+              custom_data: {
+                age: ageRaw ? Number(String(ageRaw).replace(/[^\d]/g, '')) || ageRaw : undefined,
+                email: email || undefined,
+                phone: phone || undefined,
+              },
+              auto_register: true,
+            }),
+          });
+          const json = await safeReadJson(res, '/api/deals/from-calendar');
+
+          if (res.ok && json?.deal_id) {
+            setSpecialEventDealIds((prev) => ({ ...prev, [eventId]: String(json.deal_id) }));
+            setSpecialEventState(eventId, 'registered');
+            specialEventInFlightRef.current.delete(eventId);
+            onDealCreated?.();
+            continue;
+          }
+
+          if (res.status === 409 || json?.error === 'already_registered') {
+            if (json?.deal_id) {
+              setSpecialEventDealIds((prev) => ({ ...prev, [eventId]: String(json.deal_id) }));
+            }
+            setSpecialEventState(eventId, 'registered');
+            specialEventInFlightRef.current.delete(eventId);
+            continue;
+          }
+
+          setSpecialEventState(eventId, 'failed');
+          specialEventInFlightRef.current.delete(eventId);
+        } catch (e) {
+          console.error('[GoogleCalendarPanel] auto register failed:', e);
+          setSpecialEventState(eventId, 'failed');
+          specialEventInFlightRef.current.delete(eventId);
+        }
+      }
+    },
+    [onDealCreated, specialEventStates, setSpecialEventState]
+  );
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -158,7 +246,9 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
       }
 
       setIcalConfigured(true);
-      setEvents(json.items ?? []);
+      const nextEvents = (json.items ?? []) as CalendarEvent[];
+      setEvents(nextEvents);
+      void autoRegisterSpecialEvents(nextEvents);
     } catch (e) {
       setIcalConfigured(false);
       setError(e instanceof Error ? e.message : 'calendar_fetch_failed');
@@ -166,27 +256,13 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [autoRegisterSpecialEvents]);
 
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
     void fetchEvents();
   }, [fetchEvents]);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const res = await fetch('/api/custom-fields', { cache: 'no-store' }).catch(() => null);
-      if (!res || cancelled) return;
-      const json = (await res.json().catch(() => null)) as { data?: DealCustomFieldDefinition[] } | null;
-      if (cancelled) return;
-      setCustomFieldDefs((json?.data ?? []).filter((d) => d.is_active !== false));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,6 +308,11 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
       }
       setShowForm(false);
       setInputUrl('');
+      setRegisterError(null);
+      setRegisterSuccess(null);
+      setSpecialEventStates({});
+      setSpecialEventDealIds({});
+      specialEventInFlightRef.current.clear();
       void fetchEvents();
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : '保存に失敗しました');
@@ -243,10 +324,32 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
   const handleCalendarRegister = async (updatedFields: DealAutoFields) => {
     // UpdatedFields contains the possibly edited auto‑filled data.
     if (!selectedEvent?.id) return;
-    setRegistering(true);
+    const validation = validateCalendarDealInput(
+      {
+        customer_name: updatedFields.顧客名,
+        assigned_to: updatedFields.担当者,
+        retirement_date: updatedFields.退職予定日,
+        deal_date: updatedFields.商談日,
+        age: updatedFields.年齢,
+        email: updatedFields.メールアドレス,
+        source: updatedFields.流入経路,
+        referrer: updatedFields.紹介者,
+        phone: updatedFields.電話番号,
+      },
+      {
+        sourceCodes: sources.map((s) => s.code),
+        agencyCodes: agencies.map((a) => a.code),
+      }
+    );
+    if (!validation.isValid) {
+      const message = Object.values(validation.errors).find(Boolean) ?? '必須項目を入力してください';
+      setRegisterError(message);
+      throw new Error(message);
+    }
     setRegisterError(null);
     setRegisterSuccess(null);
     try {
+      const normalized = validation.normalized;
       const res = await fetch('/api/deals/from-calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -259,16 +362,17 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
             description: selectedEvent.description,
           },
           // Use the possibly edited retirement date from the modal
-          retirement_date: updatedFields?.退職予定日 ?? retirementDate,
-          customer_name: updatedFields?.顧客名,
-          deal_date: updatedFields?.商談日,
-          source: updatedFields?.流入経路,
-          agency_code: updatedFields?.紹介者,
+          retirement_date: normalized.retirement_date,
+          customer_name: normalized.customer_name,
+          assigned_to: normalized.assigned_to,
+          deal_date: normalized.deal_date,
+          source: normalized.source,
+          agency_code: normalized.referrer,
           custom_data: {
             ...(customData ?? {}),
-            age: updatedFields?.年齢 ? Number(String(updatedFields.年齢).replace(/[^\d]/g, '')) || updatedFields.年齢 : undefined,
-            email: updatedFields?.メールアドレス ?? undefined,
-            phone: updatedFields?.電話番号 ?? undefined,
+            age: normalized.age ? Number(String(normalized.age).replace(/[^\d]/g, '')) || normalized.age : undefined,
+            email: normalized.email || undefined,
+            phone: normalized.phone || undefined,
           },
         }),
       });
@@ -294,14 +398,18 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
       const message = e instanceof Error ? e.message : '登録に失敗しました';
       setRegisterError((prev) => prev ?? message);
       throw e;
-    } finally {
-      setRegistering(false);
     }
   };
   const handleDisconnect = async () => {
     await fetch('/api/user/ical-url', { method: 'DELETE' });
     setIcalConfigured(false);
     setEvents([]);
+    setSelectedEvent(null);
+    setRegisterError(null);
+    setRegisterSuccess(null);
+    setSpecialEventStates({});
+    setSpecialEventDealIds({});
+    specialEventInFlightRef.current.clear();
   };
 
   return (
@@ -425,12 +533,20 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
             const start = ev.start?.dateTime ?? ev.start?.date ?? '';
             const key = ev.id ?? `${start}-${idx}`;
             const isToday = start ? new Date(start).toDateString() === new Date().toDateString() : false;
+            const special = Boolean(ev.is_special_event ?? isSpecialCalendarEvent(ev.summary));
+            const eventId = ev.id ?? '';
+            const autoStatus = eventId ? specialEventStates[eventId] : undefined;
+            const dealId = eventId ? specialEventDealIds[eventId] : undefined;
 
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => {
+                  if (special && dealId) {
+                    router.push(`/deals/${dealId}`);
+                    return;
+                  }
                   setSelectedEvent(ev);
                   setRetirementDate(extractRetirementDateFromDescription(ev.description));
                   setRegisterError(null);
@@ -445,51 +561,81 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
                     phone,
                   });
                 }}
-                className="w-full text-left px-4 sm:px-6 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors"
+                className={[
+                  'w-full text-left px-4 sm:px-6 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors',
+                  special ? 'bg-amber-50/40' : '',
+                ].filter(Boolean).join(' ')}
               >
-                <div className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${isToday ? 'bg-green-400' : 'bg-blue-300'}`} />
+                <div
+                  className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                    special ? 'bg-amber-500' : isToday ? 'bg-green-400' : 'bg-blue-300'
+                  }`}
+                />
                 <div className="flex-grow min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{ev.summary ?? '（タイトルなし）'}</p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{ev.summary ?? '（タイトルなし）'}</p>
+                    {special && (
+                      <span className="inline-flex flex-shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                        特例イベント
+                      </span>
+                    )}
+                    {special && autoStatus === 'pending' && (
+                      <span className="inline-flex flex-shrink-0 items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                        自動登録中
+                      </span>
+                    )}
+                    {special && autoStatus === 'registered' && (
+                      <span className="inline-flex flex-shrink-0 items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                        商談登録済み
+                      </span>
+                    )}
+                    {special && autoStatus === 'failed' && (
+                      <span className="inline-flex flex-shrink-0 items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                        自動登録失敗
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-500 mt-0.5">{formatStart(ev)}</p>
                 </div>
-                {ev.htmlLink && (
+                {ev.htmlLink && !special && (
                   <span className="text-xs text-blue-600 whitespace-nowrap flex-shrink-0">クリックで商談化</span>
+                )}
+                {special && dealId && (
+                  <span className="text-xs text-amber-700 whitespace-nowrap flex-shrink-0">詳細を見る</span>
                 )}
               </button>
             );
           })}
-      {selectedEvent && (
-  <DealRegisterModal
-    isOpen={true}
-    onClose={() => {
-      setSelectedEvent(null);
-      setRegisterError(null);
-    }}
-    eventDetails={{
-      タイトル: selectedEvent.summary ?? '',
-      説明: selectedEvent.description ?? '',
-      開始: formatDateTimeJst(selectedEvent.start?.dateTime ?? selectedEvent.start?.date ?? ''),
-      終了: formatDateTimeJst(selectedEvent.end?.dateTime ?? selectedEvent.end?.date ?? ''),
-    }}
-    autoFields={{
-      顧客名: extractCustomerNameFromDescription(selectedEvent.description) || (selectedEvent.summary ?? ''),
-      担当者: currentUser.name,
-      退職予定日: retirementDate,
-      商談日: (selectedEvent.start?.dateTime ?? selectedEvent.start?.date ?? '').slice(0, 10),
-      年齢: extractFieldFromDescription(selectedEvent.description, '年齢'),
-      メールアドレス: extractFieldFromDescription(selectedEvent.description, 'メールアドレス'),
-      電話番号: extractFieldFromDescription(selectedEvent.description, '電話番号'),
-      流入経路: '',
-      紹介者: '',
-    }}
-    sources={sources.map((s) => ({ code: s.code, name: s.name }))}
-    agencies={agencies.map((a) => ({ code: a.code, name: a.name }))}
-    onConfirm={handleCalendarRegister}
-  />
-)}
-</div>
-
-
+        {selectedEvent && (
+          <DealRegisterModal
+            isOpen={true}
+            onClose={() => {
+              setSelectedEvent(null);
+              setRegisterError(null);
+            }}
+            eventDetails={{
+              タイトル: selectedEvent.summary ?? '',
+              説明: selectedEvent.description ?? '',
+              開始: formatDateTimeJst(selectedEvent.start?.dateTime ?? selectedEvent.start?.date ?? ''),
+              終了: formatDateTimeJst(selectedEvent.end?.dateTime ?? selectedEvent.end?.date ?? ''),
+            }}
+            autoFields={{
+              顧客名: extractCustomerNameFromDescription(selectedEvent.description) || (selectedEvent.summary ?? ''),
+              担当者: currentUser.name,
+              退職予定日: retirementDate,
+              商談日: (selectedEvent.start?.dateTime ?? selectedEvent.start?.date ?? '').slice(0, 10),
+              年齢: extractFieldFromDescription(selectedEvent.description, '年齢'),
+              メールアドレス: extractFieldFromDescription(selectedEvent.description, 'メールアドレス'),
+              電話番号: extractFieldFromDescription(selectedEvent.description, '電話番号'),
+              流入経路: '',
+              紹介者: '',
+            }}
+            sources={sources.map((s) => ({ code: s.code, name: s.name }))}
+            agencies={agencies.map((a) => ({ code: a.code, name: a.name }))}
+            onConfirm={handleCalendarRegister}
+          />
+        )}
+      </div>
     </div>
   );
 }

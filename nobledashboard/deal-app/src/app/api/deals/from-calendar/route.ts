@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readAppSessionCookie } from '@/lib/auth/app-session';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { formatEventForDeal, parseLStepCalendarDescription, type ICalEvent } from '@/lib/ical';
+import {
+  formatEventForDeal,
+  isSpecialCalendarEvent,
+  parseLStepCalendarDescription,
+  type ICalEvent,
+} from '@/lib/ical';
+import { validateCalendarDealInput } from '@/lib/calendar-deal-validation';
 
 function buildDealId(): string {
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -18,10 +24,16 @@ export async function POST(request: NextRequest) {
       event?: Partial<ICalEvent>;
       retirement_date?: string;
       customer_name?: string;
+      assigned_to?: string;
       deal_date?: string;
       source?: string;
       agency_code?: string;
-      custom_data?: Record<string, unknown>;
+      auto_register?: boolean;
+      custom_data?: Record<string, unknown> & {
+        age?: string | number;
+        email?: string;
+        phone?: string;
+      };
     } | null;
 
     if (!body?.event?.id || !body.event.start) {
@@ -47,28 +59,13 @@ export async function POST(request: NextRequest) {
 
     const draft = formatEventForDeal(event);
     const parsed = parseLStepCalendarDescription(event.description);
-    const retirementDate = body.retirement_date || parsed.retirementDate;
-    if (!retirementDate) {
-      return NextResponse.json({ error: 'retirement_date_required', message: '退職予定日が必要です' }, { status: 400 });
-    }
-
-    const requestedCustomerName = typeof body.customer_name === 'string' ? body.customer_name.trim() : '';
-    const customerName = requestedCustomerName || draft.customer_name;
-    if (!customerName) {
-      return NextResponse.json({ error: 'customer_name_required', message: '顧客名が必要です' }, { status: 400 });
-    }
-
-    const requestedDealDate = typeof body.deal_date === 'string' ? body.deal_date.trim() : '';
-    const dealDate = requestedDealDate || draft.deal_date;
-    if (!dealDate) {
-      return NextResponse.json({ error: 'deal_date_required', message: '商談日が必要です' }, { status: 400 });
-    }
+    const isSpecialEvent = isSpecialCalendarEvent(event.summary);
 
     const supabase = createSupabaseAdminClient();
 
     const { data: sourceRows, error: sourceError } = await supabase
       .from('m_sources')
-      .select('code')
+      .select('code, name')
       .eq('is_active', true)
       .order('sort_order', { ascending: true });
     if (sourceError) {
@@ -76,9 +73,100 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'source_fetch_failed', message: sourceError.message }, { status: 500 });
     }
 
+    const { data: agencyRows, error: agencyError } = await supabase
+      .from('m_agencies')
+      .select('code')
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+    if (agencyError) {
+      console.error('[deals/from-calendar] agency fetch error:', agencyError);
+      return NextResponse.json({ error: 'agency_fetch_failed', message: agencyError.message }, { status: 500 });
+    }
+
     const sourceCodes = (sourceRows ?? []).map((r) => r.code);
-    const requestSource = typeof body.source === 'string' ? body.source.trim() : '';
-    const sourceCode = requestSource && sourceCodes.includes(requestSource) ? requestSource : null;
+    const agencyCodes = (agencyRows ?? []).map((r) => r.code);
+    const fallbackSourceCode =
+      sourceRows?.find((row) => row.name === '流入経路なし' || row.name === '不明')?.code ??
+      sourceRows?.[0]?.code ??
+      null;
+    const autoRegister = body?.auto_register === true || isSpecialEvent;
+
+    const sourceValue =
+      typeof body.source === 'string' && body.source.trim()
+        ? body.source.trim()
+        : autoRegister
+          ? fallbackSourceCode ?? draft.source
+          : '';
+    const referrerValue = typeof body.agency_code === 'string' ? body.agency_code : '';
+    const retirementDateValue =
+      typeof body.retirement_date === 'string' && body.retirement_date.trim()
+        ? body.retirement_date.trim()
+        : parsed.retirementDate || '';
+    const customerNameValue =
+      typeof body.customer_name === 'string' && body.customer_name.trim()
+        ? body.customer_name.trim()
+        : parsed.customerName || draft.customer_name;
+    const dealDateValue =
+      typeof body.deal_date === 'string' && body.deal_date.trim()
+        ? body.deal_date.trim()
+        : draft.deal_date;
+    const ageValue =
+      typeof body.custom_data?.age === 'string' || typeof body.custom_data?.age === 'number'
+        ? String(body.custom_data.age)
+        : parsed.age || '';
+    const emailValue =
+      typeof body.custom_data?.email === 'string'
+        ? body.custom_data.email
+        : parsed.email || '';
+    const phoneValue =
+      typeof body.custom_data?.phone === 'string'
+        ? body.custom_data.phone
+        : parsed.phone || '';
+
+    const validation = validateCalendarDealInput(
+      {
+        customer_name: customerNameValue,
+        assigned_to: typeof body.assigned_to === 'string' && body.assigned_to.trim() ? body.assigned_to.trim() : session.userId,
+        retirement_date: retirementDateValue,
+        deal_date: dealDateValue,
+        age: ageValue,
+        email: emailValue,
+        source: sourceValue,
+        referrer: referrerValue,
+        phone: phoneValue,
+      },
+      {
+        sourceCodes,
+        agencyCodes,
+      }
+    );
+
+    if (!validation.isValid) {
+      return NextResponse.json(
+        {
+          error: 'validation_failed',
+          message: '入力内容を確認してください',
+          field_errors: validation.errors,
+        },
+        { status: 400 }
+      );
+    }
+
+    const sourceCode = validation.normalized.source || null;
+    const agencyCode = validation.normalized.referrer || null;
+    const retirementDate = validation.normalized.retirement_date;
+    const customerName = validation.normalized.customer_name;
+    const dealDate = validation.normalized.deal_date;
+
+    if (autoRegister && !sourceCode) {
+      return NextResponse.json(
+        {
+          error: 'source_not_configured',
+          message: '自動登録に必要な流入経路が設定されていません',
+        },
+        { status: 400 }
+      );
+    }
 
     const { data: existing, error: existingError } = await supabase
       .from('deals')
@@ -91,7 +179,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (existing?.id) {
-      return NextResponse.json({ error: 'already_registered', message: '既に商談化済みです' }, { status: 409 });
+      return NextResponse.json(
+        { error: 'already_registered', message: '既に商談化済みです', deal_id: existing.id },
+        { status: 409 }
+      );
     }
 
     const dealId = buildDealId();
@@ -102,11 +193,16 @@ export async function POST(request: NextRequest) {
       deal_date: dealDate,
       deal_notes: draft.deal_notes,
       source: sourceCode,
-      agency_code: typeof body?.agency_code === 'string' ? body.agency_code.trim() || null : null,
+      agency_code: agencyCode,
       status: 'NEW',
       retirement_date: retirementDate,
       calendar_event_id: draft.calendar_event_id,
-      custom_data: body?.custom_data ?? {},
+      custom_data: {
+        ...(body?.custom_data ?? {}),
+        age: validation.normalized.age ? Number(String(validation.normalized.age).replace(/[^\d]/g, '')) || validation.normalized.age : undefined,
+        email: validation.normalized.email || undefined,
+        phone: validation.normalized.phone || undefined,
+      },
       created_by: session.userId,
       updated_by: session.userId,
     };

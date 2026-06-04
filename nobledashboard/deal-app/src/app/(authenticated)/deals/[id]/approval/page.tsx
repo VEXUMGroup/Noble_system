@@ -14,6 +14,10 @@ import { getDeal } from '@/lib/supabase';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useMasterData } from '@/lib/useMasterData';
 import { useCurrentUser } from '@/lib/useCurrentUser';
+import {
+  getDealProgressValidationMessage,
+  validateDealProgressInput,
+} from '@/lib/deal-progress-validation';
 
 interface ApprovalPageProps {
   params: {
@@ -52,6 +56,17 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
   const [rejectComment, setRejectComment] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const dealProgressValidation = validateDealProgressInput({
+    assigned_to: deal?.assigned_to ?? '',
+    deal_date: deal?.deal_date ?? '',
+    age: String(deal?.custom_data?.age ?? deal?.age ?? ''),
+    email: deal?.email ?? deal?.custom_data?.email ?? '',
+    source: deal?.source ?? '',
+    referrer: deal?.agency_code ?? deal?.referrer ?? '',
+  });
+  const dealProgressError = getDealProgressValidationMessage(dealProgressValidation);
 
   if (dealLoading) {
     return (
@@ -79,6 +94,10 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
       alert('営業部は承認操作ができません。管理者にお問い合わせください。');
       return;
     }
+    if (!dealProgressValidation.isValid) {
+      setErrorMessage(dealProgressError);
+      return;
+    }
     (async () => {
       const supabase = createSupabaseBrowserClient();
       const payload = { status: 'APPROVED', updated_at: new Date().toISOString() };
@@ -101,6 +120,10 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
   const handleReject = () => {
     if (isReadOnly) {
       alert('営業部は差し戻し操作ができません。管理者にお問い合わせください。');
+      return;
+    }
+    if (!dealProgressValidation.isValid) {
+      setErrorMessage(dealProgressError);
       return;
     }
     if (!rejectComment.trim()) {
@@ -159,6 +182,19 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
           この画面では成約情報を確認し、承認または差し戻しを行います。情報に過不足がある場合はコメント付きで差し戻してください。
         </p>
       </div>
+
+      {!dealProgressValidation.isValid && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <p className="text-amber-800 font-medium">承認前に基本情報の必須項目を補完してください。</p>
+          <p className="text-amber-700 text-sm mt-1">{dealProgressError}</p>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-700 text-sm font-medium">{errorMessage}</p>
+        </div>
+      )}
 
       {/* Deal Info Card */}
       <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
@@ -221,14 +257,14 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
         {!showRejectForm ? (
           <div className="flex flex-col sm:flex-row gap-3">
             <button
-              disabled={isReadOnly}
+              disabled={isReadOnly || !dealProgressValidation.isValid}
               onClick={handleApprove}
               className="flex-1 sm:flex-none px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed"
             >
               承認
             </button>
             <button
-              disabled={isReadOnly}
+              disabled={isReadOnly || !dealProgressValidation.isValid}
               onClick={() => setShowRejectForm(true)}
               className="flex-1 sm:flex-none px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed"
             >
@@ -252,6 +288,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
             <div className="flex gap-3">
               <button
                 onClick={handleReject}
+                disabled={!dealProgressValidation.isValid}
                 className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
               >
                 送信

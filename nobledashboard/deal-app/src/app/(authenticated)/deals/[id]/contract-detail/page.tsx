@@ -6,6 +6,10 @@ import { paymentPlanOptions, paymentMethodOptions } from '@/lib/constants';
 import { useMasterData } from '@/lib/useMasterData';
 import { getDeal } from '@/lib/supabase';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import {
+  getDealProgressValidationMessage,
+  validateDealProgressInput,
+} from '@/lib/deal-progress-validation';
 
 interface ContractDetailPageProps {
   params: {
@@ -59,6 +63,16 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
     setIrregularNotes(deal.irregular_notes || '');
   }, [deal]);
 
+  const dealProgressValidation = validateDealProgressInput({
+    assigned_to: deal?.assigned_to ?? '',
+    deal_date: deal?.deal_date ?? '',
+    age: String(deal?.custom_data?.age ?? deal?.age ?? ''),
+    email: deal?.email ?? deal?.custom_data?.email ?? '',
+    source: deal?.source ?? '',
+    referrer: deal?.agency_code ?? deal?.referrer ?? '',
+  });
+  const dealProgressError = getDealProgressValidationMessage(dealProgressValidation);
+
   if (dealLoading) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-8">
@@ -84,6 +98,10 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
   }
 
   const handleConfirm = () => {
+    if (!dealProgressValidation.isValid) {
+      setErrorMessage(dealProgressError);
+      return;
+    }
     if (
       !contractPlan ||
       (contractPlan === 'その他' && !contractPlanOther.trim()) ||
@@ -150,6 +168,13 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
       {errorMessage && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <p className="text-red-700 text-sm font-medium">{errorMessage}</p>
+        </div>
+      )}
+
+      {!dealProgressValidation.isValid && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-medium text-amber-900">次の工程に進めません</p>
+          <p className="text-sm text-amber-800 mt-1">{dealProgressError}</p>
         </div>
       )}
 
@@ -284,6 +309,7 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
             <button
               type="button"
               onClick={handleConfirm}
+              disabled={!dealProgressValidation.isValid}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
             >
               確定して保存

@@ -18,6 +18,11 @@ import { getDeal } from '@/lib/supabase';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
 import { validateCustomDataOrThrow, type DealCustomFieldDefinition } from '@/lib/custom-fields';
+import {
+  getDealProgressFieldLabel,
+  getDealProgressValidationMessage,
+  validateDealProgressInput,
+} from '@/lib/deal-progress-validation';
 
 interface DealDetailPageProps {
   params: { id: string };
@@ -75,12 +80,14 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const [hrTarget28m, setHrTarget28m] = useState(false);
   const [nextActionDate, setNextActionDate] = useState('');
   const [resultError, setResultError] = useState('');
+  const [transitionError, setTransitionError] = useState('');
 
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
   // ── 顧客詳細編集フォームの状態
-  const [isEditing, setIsEditing] = useState(false);
+  // 詳細画面をそのまま編集フォームとして使うため、初期表示から編集モードにする。
+  const [isEditing] = useState(true);
   const [editCustomerName, setEditCustomerName] = useState('');
   const [editAssignedTo, setEditAssignedTo] = useState('');
   const [editDealDate, setEditDealDate] = useState('');
@@ -105,7 +112,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setEditSourceCode(deal.source ?? '');
     setEditAgencyCode(deal.agency_code ?? '');
     setEditResultStatus(deal.result_status ?? '');
-    setEditEmail(deal.email ?? '');
+    setEditEmail(deal.email ?? deal.custom_data?.email ?? '');
     setEditPhone(deal.phone ?? '');
     setEditProspectLevel(deal.prospect_level ?? '');
     setEditAgencyType(deal.agency_type ?? '');
@@ -126,6 +133,49 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       cancelled = true;
     };
   }, []);
+
+  const getCurrentDealProgressValidation = () =>
+    validateDealProgressInput(
+      {
+        assigned_to: deal?.assigned_to ?? '',
+        deal_date: deal?.deal_date ?? '',
+        age: String(deal?.custom_data?.age ?? deal?.age ?? ''),
+        email: deal?.email ?? deal?.custom_data?.email ?? '',
+        source: deal?.source ?? '',
+        referrer: deal?.agency_code ?? deal?.referrer ?? '',
+      },
+      {
+        sourceCodes: sources.map((s) => s.code),
+        agencyCodes: agencies.map((a) => a.code),
+      }
+    );
+
+  const getEditDealProgressValidation = () =>
+    validateDealProgressInput(
+      {
+        assigned_to: editAssignedTo,
+        deal_date: editDealDate,
+        age: String(editCustomData?.age ?? ''),
+        email: editEmail,
+        source: editSourceCode,
+        referrer: editAgencyCode,
+      },
+      {
+        sourceCodes: sources.map((s) => s.code),
+        agencyCodes: agencies.map((a) => a.code),
+      }
+    );
+
+  const currentDealProgressValidation = getCurrentDealProgressValidation();
+  const editDealProgressValidation = getEditDealProgressValidation();
+  const currentDealProgressError = getDealProgressValidationMessage(currentDealProgressValidation);
+  const editDealProgressError = getDealProgressValidationMessage(editDealProgressValidation);
+
+  useEffect(() => {
+    if (currentDealProgressValidation.isValid && transitionError) {
+      setTransitionError('');
+    }
+  }, [currentDealProgressValidation.isValid, transitionError]);
 
   if (dealLoading) {
     return (
@@ -148,6 +198,10 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
   // ── 面談記録を保存（NEW → INTERVIEWED or NEW のまま）
   const handleSaveInterview = () => {
+    if (!editDealProgressValidation.isValid) {
+      setInterviewError(editDealProgressError);
+      return;
+    }
     if (!interviewStatus) {
       setInterviewError('面談ステータスを選択してください');
       return;
@@ -176,6 +230,10 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
   // ── 結果を保存（INTERVIEWED / CONSIDERING → 成約/検討/対象外/失注）
   const handleSaveResult = () => {
+    if (!editDealProgressValidation.isValid) {
+      setResultError(editDealProgressError);
+      return;
+    }
     if (!resultStatus) {
       setResultError('結果ステータスを選択してください');
       return;
@@ -231,16 +289,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
   // ── 顧客詳細を保存
   const handleSaveCustomer = () => {
-    if (!editCustomerName.trim()) {
-      setInterviewError('顧客名を入力してください');
-      return;
-    }
-    if (!editAssignedTo) {
-      setInterviewError('担当者を選択してください');
-      return;
-    }
-    if (!editDealDate) {
-      setInterviewError('商談日を選択してください');
+    if (!editDealProgressValidation.isValid) {
+      setInterviewError(editDealProgressError);
       return;
     }
     (async () => {
@@ -254,11 +304,11 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         }
         const payload = {
           customer_name: editCustomerName.trim(),
-          assigned_to: editAssignedTo,
-          deal_date: editDealDate,
+          assigned_to: editDealProgressValidation.normalized.assigned_to,
+          deal_date: editDealProgressValidation.normalized.deal_date,
           retirement_date: editRetirementDate || null,
-          source: editSourceCode || null,
-          agency_code: editAgencyCode || null,
+          source: editDealProgressValidation.normalized.source || null,
+          agency_code: editDealProgressValidation.normalized.referrer || null,
           result_status: editResultStatus || null,
           email: editEmail || null,
           phone: editPhone || null,
@@ -277,7 +327,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         }
         console.log('Update successful:', data);
         setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
-        setIsEditing(false);
         setInterviewError('');
         setSuccessMessage('顧客詳細を保存しました');
         setShowSuccess(true);
@@ -298,13 +347,12 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setEditSourceCode(deal.source ?? '');
     setEditAgencyCode(deal.agency_code ?? '');
     setEditResultStatus(deal.result_status ?? '');
-    setEditEmail(deal.email ?? '');
+    setEditEmail(deal.email ?? deal.custom_data?.email ?? '');
     setEditPhone(deal.phone ?? '');
     setEditProspectLevel(deal.prospect_level ?? '');
     setEditAgencyType(deal.agency_type ?? '');
     setEditMemo(deal.memo ?? '');
     setEditCustomData((deal.custom_data ?? {}) as Record<string, any>);
-    setIsEditing(false);
   };
 
   const handleDeleteDeal = () => {
@@ -329,6 +377,26 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const isContractedOrLater = ['CONTRACTED', 'DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(dealStatus);
   const isDetailEnteredOrLater = ['DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(dealStatus);
 
+  const guardDealProgressTransition = () => {
+    const validation = getCurrentDealProgressValidation();
+    if (!validation.isValid) {
+      setTransitionError(getDealProgressValidationMessage(validation));
+      return false;
+    }
+    setTransitionError('');
+    return true;
+  };
+
+  const handleProceedToContractDetail = () => {
+    if (!guardDealProgressTransition()) return;
+    router.push(`/deals/${deal.id}/contract-detail`);
+  };
+
+  const handleProceedToApproval = () => {
+    if (!guardDealProgressTransition()) return;
+    router.push(`/deals/${deal.id}/approval`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -346,9 +414,23 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         </div>
       )}
 
+      {!currentDealProgressValidation.isValid && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <p className="text-amber-800 font-medium">次の処理に進む前に、必須項目をすべて入力してください。</p>
+          {currentDealProgressValidation.missingFields.length > 0 && (
+            <p className="text-amber-700 text-sm mt-1">
+              不足項目: {currentDealProgressValidation.missingFields.map(getDealProgressFieldLabel).join('、')}
+            </p>
+          )}
+          {currentDealProgressValidation.missingFields.length === 0 && (
+            <p className="text-amber-700 text-sm mt-1">{currentDealProgressError}</p>
+          )}
+        </div>
+      )}
+
       {/* 基本情報 */}
       <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
-        <div className="flex items-center justify-between gap-4 mb-5">
+          <div className="flex items-center justify-between gap-4 mb-5">
           <div className="flex-1">
             <p className="text-xs text-gray-400 mb-1">顧客名</p>
             {isEditing ? (
@@ -364,17 +446,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <StatusBadge status={dealStatus} />
-            {!isEditing && (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                </svg>
-                編集
-              </button>
-            )}
           </div>
         </div>
 
@@ -383,7 +454,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">担当者</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">担当者 <span className="text-red-500">*</span></label>
                 <select value={editAssignedTo} onChange={(e) => setEditAssignedTo(e.target.value)} className={inputClass}>
                   <option value="">-- 未選択 --</option>
                   {users.map((u) => (
@@ -403,7 +474,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">商談日</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">商談日 <span className="text-red-500">*</span></label>
                 <input type="date" value={editDealDate} onChange={(e) => setEditDealDate(e.target.value)} className={inputClass} />
               </div>
               <div>
@@ -411,7 +482,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 <input type="date" value={editRetirementDate} onChange={(e) => setEditRetirementDate(e.target.value)} className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">年齢</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">年齢 <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -422,7 +493,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">メールアドレス</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">メールアドレス <span className="text-red-500">*</span></label>
                 <input
                   type="email"
                   value={editEmail}
@@ -451,7 +522,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">流入経路</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">流入経路 <span className="text-red-500">*</span></label>
                 <select value={editSourceCode} onChange={(e) => setEditSourceCode(e.target.value)} className={inputClass}>
                   <option value="">-- 未選択 --</option>
                   {sources.map((s) => (
@@ -468,6 +539,9 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                   placeholder="-- なし --"
                 />
               </div>
+              <p className="text-xs text-gray-500 sm:col-span-2 -mt-2">
+                流入経路または紹介者のどちらか一方を入力してください。
+              </p>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">代理店新旧</label>
                 <select value={editAgencyType} onChange={(e) => setEditAgencyType(e.target.value)} className={inputClass}>
@@ -570,8 +644,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
             <div className="flex gap-3 pt-2">
               <button
                 onClick={handleSaveCustomer}
-                disabled={!editCustomerName.trim()}
-                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition disabled:opacity-50"
+                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition"
               >
                 保存する
               </button>
@@ -579,7 +652,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 onClick={handleCancelEdit}
                 className="px-5 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm transition"
               >
-                キャンセル
+                変更を取り消す
               </button>
               <button
                 onClick={handleDeleteDeal}
@@ -593,17 +666,17 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
           /* ── 表示モード ── */
           <dl className="divide-y divide-gray-100">
             {[
-              ['お客様氏名 *', deal.customer_name ?? '-'],
+              ['お客様氏名', deal.customer_name ?? '-'],
               ['担当 *', users.find((u) => u.id === deal.assigned_to)?.name ?? deal.assigned_to ?? '-'],
               ['結果ステータス', deal.result_status ?? '-'],
               ['商談日 *', deal.deal_date ? formatDate(deal.deal_date) : '-'],
-              ['年齢', (deal.custom_data?.age ?? deal.age) ?? '-'],
-              ['メールアドレス', deal.email ?? deal.custom_data?.email ?? '-'],
+              ['年齢 *', (deal.custom_data?.age ?? deal.age) ?? '-'],
+              ['メールアドレス *', deal.email ?? deal.custom_data?.email ?? '-'],
               ['電話番号', deal.phone ?? deal.custom_data?.phone ?? '-'],
               ['見込み顧客', deal.prospect_level ?? '-'],
               ['流入経路（エルステ経由） *', sources.find((s) => s.code === deal.source)?.name ?? deal.source ?? '-'],
               ['紹介者（代理店経由）', agencies.find((a) => a.code === deal.agency_code)?.name ?? deal.agency_code ?? '-'],
-              ['退職予定日 *', deal.retirement_date ? formatDate(deal.retirement_date) : '-'],
+              ['退職予定日', deal.retirement_date ? formatDate(deal.retirement_date) : '-'],
               ['代理店新旧', deal.agency_type ?? '-'],
               ['メモ', deal.memo || '-'],
             ].map(([label, value]) => (
@@ -660,22 +733,30 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         )}
 
         {/* 成約以降のアクションリンク */}
-        {!isEditing && isContractedOrLater && (
+        {isContractedOrLater && (
           <div className="flex flex-wrap gap-3 mt-5 pt-4 border-t border-gray-100">
-            <Link
-              href={`/deals/${deal.id}/contract-detail`}
+            <button
+              type="button"
+              onClick={handleProceedToContractDetail}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
             >
               成約詳細を入力
-            </Link>
+            </button>
             {isDetailEnteredOrLater && (
-              <Link
-                href={`/deals/${deal.id}/approval`}
+              <button
+                type="button"
+                onClick={handleProceedToApproval}
                 className="rounded-lg bg-gray-800 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700"
               >
                 事務承認
-              </Link>
+              </button>
             )}
+          </div>
+        )}
+        {transitionError && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-sm font-medium text-amber-900">次の段階へ進めません</p>
+            <p className="text-sm text-amber-800 mt-1">{transitionError}</p>
           </div>
         )}
       </div>

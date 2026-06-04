@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readAppSessionCookie } from '@/lib/auth/app-session';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { fetchICalEvents } from '@/lib/ical';
-
+import { fetchICalEvents, isSpecialCalendarEvent } from '@/lib/ical';
 export async function GET() {
   try {
     const session = readAppSessionCookie();
@@ -36,6 +35,7 @@ export async function GET() {
       location: ev.location,
       description: ev.description ?? null,
       htmlLink: ev.url,
+      is_special_event: isSpecialCalendarEvent(ev.summary),
     }));
     return NextResponse.json({ items });
   } catch (err) {

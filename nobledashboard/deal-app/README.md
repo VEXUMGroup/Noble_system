@@ -79,3 +79,6 @@ cd nobledashboard/deal-app
 npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
+## 社内向け運用マニュアル
+
+実運用時の利用手順は [docs/operation-manual.md](docs/operation-manual.md) を参照してください。

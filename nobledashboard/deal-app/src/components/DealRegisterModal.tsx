@@ -1,5 +1,6 @@
 import React, { useState, ChangeEvent } from 'react';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
+import { validateCalendarDealInput, type CalendarDealErrors } from '@/lib/calendar-deal-validation';
 
 export interface DealAutoFields {
   顧客名: string;
@@ -75,20 +76,61 @@ export const DealRegisterModal: React.FC<DealRegisterModalProps> = ({
     退職予定日: normalizeYmd(autoFields.退職予定日),
     商談日: normalizeYmd(autoFields.商談日),
   });
+  const [errors, setErrors] = useState<CalendarDealErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const clearFieldError = (field: keyof CalendarDealErrors) => {
+    setErrors((prev) => {
+      if (field === 'source' || field === 'referrer') {
+        const next = { ...prev };
+        delete next.source;
+        delete next.referrer;
+        return next;
+      }
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   const handleChange =
     (field: keyof DealAutoFields) => (e: ChangeEvent<HTMLInputElement>) => {
       setEditable((prev) => ({ ...prev, [field]: e.target.value }));
+      if (field === '顧客名') clearFieldError('customer_name');
+      if (field === '担当者') clearFieldError('assigned_to');
+      if (field === '退職予定日') clearFieldError('retirement_date');
+      if (field === '商談日') clearFieldError('deal_date');
+      if (field === '年齢') clearFieldError('age');
+      if (field === 'メールアドレス') clearFieldError('email');
+      setSubmitError(null);
     };
 
   const handleSubmit = async () => {
-    // 必要なら簡易バリデーション（顧客名と商談日は必須と想定）
-    if (!editable.顧客名 || !editable.商談日) {
-      alert('顧客名 と 商談日 は必須項目です');
+    const validation = validateCalendarDealInput(
+      {
+        customer_name: editable.顧客名,
+        assigned_to: editable.担当者,
+        retirement_date: editable.退職予定日,
+        deal_date: editable.商談日,
+        age: editable.年齢,
+        email: editable.メールアドレス,
+        source: editable.流入経路,
+        referrer: editable.紹介者,
+        phone: editable.電話番号,
+      },
+      {
+        sourceCodes: sources.map((s) => s.code),
+        agencyCodes: agencies.map((a) => a.code),
+      }
+    );
+
+    if (!validation.isValid) {
+      setErrors(validation.errors);
+      setSubmitError('必須項目を入力してください');
       return;
     }
+
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -147,47 +189,65 @@ export const DealRegisterModal: React.FC<DealRegisterModalProps> = ({
             <h3 className="text-sm font-semibold text-gray-900 mb-2">自動入力項目（編集可）</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="flex flex-col">
-                <span className="text-xs font-medium text-gray-600 mb-1">顧客名</span>
+                <span className="text-xs font-medium text-gray-600 mb-1">顧客名 <span className="text-red-500">*</span></span>
                 <input
                   type="text"
                   value={editable.顧客名}
                   onChange={handleChange('顧客名')}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 ${
+                    errors.customer_name ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 />
+                {errors.customer_name && <span className="mt-1 text-xs text-red-600">{errors.customer_name}</span>}
               </label>
               <label className="flex flex-col">
-                <span className="text-xs font-medium text-gray-600 mb-1">担当者</span>
+                <span className="text-xs font-medium text-gray-600 mb-1">担当者 <span className="text-red-500">*</span></span>
                 <input
                   type="text"
                   value={editable.担当者}
                   onChange={handleChange('担当者')}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 ${
+                    errors.assigned_to ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 />
+                {errors.assigned_to && <span className="mt-1 text-xs text-red-600">{errors.assigned_to}</span>}
               </label>
               <label className="flex flex-col">
-                <span className="text-xs font-medium text-gray-600 mb-1">退職予定日</span>
+                <span className="text-xs font-medium text-gray-600 mb-1">退職予定日 <span className="text-red-500">*</span></span>
                 <input
                   type="date"
                   value={editable.退職予定日}
                   onChange={handleChange('退職予定日')}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 ${
+                    errors.retirement_date ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 />
+                {errors.retirement_date && <span className="mt-1 text-xs text-red-600">{errors.retirement_date}</span>}
               </label>
               <label className="flex flex-col">
-                <span className="text-xs font-medium text-gray-600 mb-1">商談日</span>
+                <span className="text-xs font-medium text-gray-600 mb-1">商談日 <span className="text-red-500">*</span></span>
                 <input
                   type="date"
                   value={editable.商談日}
                   onChange={handleChange('商談日')}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 ${
+                    errors.deal_date ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 />
+                {errors.deal_date && <span className="mt-1 text-xs text-red-600">{errors.deal_date}</span>}
               </label>
               <label className="flex flex-col">
                 <span className="text-xs font-medium text-gray-600 mb-1">流入経路</span>
                 <select
                   value={editable.流入経路}
-                  onChange={(e) => setEditable((prev) => ({ ...prev, 流入経路: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                  onChange={(e) => {
+                    setEditable((prev) => ({ ...prev, 流入経路: e.target.value }));
+                    clearFieldError('source');
+                    setSubmitError(null);
+                  }}
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 ${
+                    errors.source ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 >
                   <option value="">未設定</option>
                   {sources.map((s) => (
@@ -196,34 +256,48 @@ export const DealRegisterModal: React.FC<DealRegisterModalProps> = ({
                     </option>
                   ))}
                 </select>
+                <span className="mt-1 text-[11px] text-gray-500">紹介者とどちらか一方を入力してください。</span>
+                {errors.source && <span className="mt-1 text-xs text-red-600">{errors.source}</span>}
               </label>
               <label className="flex flex-col">
                 <span className="text-xs font-medium text-gray-600 mb-1">紹介者</span>
                 <AgencySearchSelect
                   value={editable.紹介者}
-                  onChange={(code) => setEditable((prev) => ({ ...prev, 紹介者: code }))}
+                  onChange={(code) => {
+                    setEditable((prev) => ({ ...prev, 紹介者: code }));
+                    clearFieldError('referrer');
+                    setSubmitError(null);
+                  }}
                   agencies={agencies}
                   placeholder="-- 未選択 --"
+                  hasError={Boolean(errors.referrer)}
                 />
+                {errors.referrer && <span className="mt-1 text-xs text-red-600">{errors.referrer}</span>}
               </label>
               <label className="flex flex-col">
-                <span className="text-xs font-medium text-gray-600 mb-1">年齢</span>
+                <span className="text-xs font-medium text-gray-600 mb-1">年齢 <span className="text-red-500">*</span></span>
                 <input
                   type="text"
                   inputMode="numeric"
                   value={editable.年齢}
                   onChange={handleChange('年齢')}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 ${
+                    errors.age ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 />
+                {errors.age && <span className="mt-1 text-xs text-red-600">{errors.age}</span>}
               </label>
               <label className="flex flex-col">
-                <span className="text-xs font-medium text-gray-600 mb-1">メールアドレス</span>
+                <span className="text-xs font-medium text-gray-600 mb-1">メールアドレス <span className="text-red-500">*</span></span>
                 <input
                   type="email"
                   value={editable.メールアドレス}
                   onChange={handleChange('メールアドレス')}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+                  className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 ${
+                    errors.email ? 'border-red-500' : 'border-gray-300'
+                  }`}
                 />
+                {errors.email && <span className="mt-1 text-xs text-red-600">{errors.email}</span>}
               </label>
               <label className="flex flex-col sm:col-span-2">
                 <span className="text-xs font-medium text-gray-600 mb-1">電話番号</span>

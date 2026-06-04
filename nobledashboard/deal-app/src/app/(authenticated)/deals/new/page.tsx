@@ -6,6 +6,7 @@ import { prospectLevels, agencyTypes } from '@/lib/constants';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useMasterData } from '@/lib/useMasterData';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
+import { validateDealProgressInput } from '@/lib/deal-progress-validation';
 
 interface FormData {
   customer_name: string;
@@ -65,18 +66,28 @@ export default function NewDealPage() {
   };
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<Record<keyof FormData, string>> = {};
-    if (!formData.customer_name.trim()) newErrors.customer_name = '必須項目です';
-    if (!formData.assigned_to) newErrors.assigned_to = '必須項目です';
-    if (!formData.deal_date) newErrors.deal_date = '必須項目です';
-    if (!formData.source) newErrors.source = '必須項目です';
-    if (!formData.retirement_date) newErrors.retirement_date = '必須項目です';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const validation = validateDealProgressInput(
+      {
+        assigned_to: formData.assigned_to,
+        deal_date: formData.deal_date,
+        age: formData.age,
+        email: formData.email,
+        source: formData.source,
+        referrer: formData.referrer,
+      },
+      {
+        sourceCodes: sources.map((s) => s.code),
+        agencyCodes: agencies.map((a) => a.code),
+      }
+    );
+    setErrors(validation.errors as Partial<Record<keyof FormData, string>>);
+    return validation.isValid;
   };
 
   const handleSave = async () => {
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      return;
+    }
 
     const dealId = `D-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${String(Math.floor(Math.random() * 900) + 100)}`;
     const newDeal = {
@@ -180,7 +191,7 @@ export default function NewDealPage() {
           {/* お客様氏名 */}
           <div>
             <label className={labelClass}>
-              お客様氏名 <span className="text-red-500">*</span>
+              お客様氏名
             </label>
             <input
               type="text"
@@ -245,7 +256,9 @@ export default function NewDealPage() {
 
           {/* 年齢 */}
           <div>
-            <label className={labelClass}>年齢</label>
+            <label className={labelClass}>
+              年齢 <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
               inputMode="numeric"
@@ -259,7 +272,9 @@ export default function NewDealPage() {
 
           {/* メールアドレス */}
           <div>
-            <label className={labelClass}>メールアドレス</label>
+            <label className={labelClass}>
+              メールアドレス <span className="text-red-500">*</span>
+            </label>
             <input
               type="email"
               name="email"
@@ -329,12 +344,16 @@ export default function NewDealPage() {
               agencies={agencies.map((a) => ({ code: a.code, name: a.name }))}
               placeholder="-- 未選択 --"
             />
+            {errors.referrer && <p className="text-red-500 text-xs mt-1">{errors.referrer}</p>}
+            {!errors.referrer && (
+              <p className="text-xs text-gray-500 mt-1">流入経路または紹介者のどちらか一方を入力してください。</p>
+            )}
           </div>
 
           {/* 退職予定日 */}
           <div>
             <label className={labelClass}>
-              退職予定日 <span className="text-red-500">*</span>
+              退職予定日
             </label>
             <input
               type="text"
