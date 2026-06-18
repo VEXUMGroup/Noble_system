@@ -203,6 +203,7 @@ export async function POST(request: NextRequest) {
         email: validation.normalized.email || undefined,
         phone: validation.normalized.phone || undefined,
       },
+      phone: validation.normalized.phone || undefined,
       created_by: session.userId,
       updated_by: session.userId,
     };

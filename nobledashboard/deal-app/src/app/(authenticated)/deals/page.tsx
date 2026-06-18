@@ -17,6 +17,7 @@ export default function DealsPage() {
   const router = useRouter();
   const { userId, role, isLoading: userLoading } = useCurrentUser();
   const [dealsRefreshToken, setDealsRefreshToken] = useState(0);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const { deals: rawDeals, isLoading: dealsLoading } = useDeals(
     role === 'manager' ? undefined : userId ? { assigned_to: userId } : undefined,
     dealsRefreshToken
@@ -26,11 +27,17 @@ export default function DealsPage() {
   const displayUsers = users;
   const displaySources = sources;
   const displayAgencies = agencies;
+  const NO_SOURCE_LABELS = new Set(['流入経路なし', '流入経路無し', '不明', 'なし']);
 
   const getUserName = (userId: string) =>
     displayUsers.find((u) => u.id === userId)?.name ?? userId ?? '-';
   const getSourceName = (code?: string) =>
-    displaySources.find((s) => s.code === code)?.name ?? code ?? '-';
+    (() => {
+      const source = displaySources.find((s) => s.code === code);
+      const sourceName = source?.name?.trim() ?? code?.trim() ?? '';
+      if (!sourceName || NO_SOURCE_LABELS.has(sourceName)) return '-';
+      return sourceName;
+    })();
   const getAgencyName = (code?: string) =>
     displayAgencies.find((a) => a.code === code)?.name ?? code ?? '-';
 
@@ -99,6 +106,19 @@ export default function DealsPage() {
     setCurrentPage(1);
   };
 
+  const activeFilterSummaries = [
+    statusFilter ? `ステータス: ${STATUS_CONFIG[statusFilter]?.label ?? statusFilter}` : '',
+    assignedToFilter
+      ? `担当者: ${getUserName(assignedToFilter)}`
+      : role === 'manager'
+        ? ''
+        : '担当者: あなたの案件',
+    dealDateFromFilter ? `From: ${dealDateFromFilter}` : '',
+    dealDateToFilter ? `To: ${dealDateToFilter}` : '',
+    agencyFilter ? `代理店: ${getAgencyName(agencyFilter)}` : '',
+    sourceFilter ? `流入: ${getSourceName(sourceFilter)}` : '',
+  ].filter(Boolean);
+
   // ユーザー情報またはデータ読み込み中の場合
   const isLoading = userLoading || dealsLoading;
 
@@ -130,110 +150,144 @@ export default function DealsPage() {
 
       {/* Filter Bar */}
       <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-4">
-          {/* Status Filter */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-medium text-gray-700">ステータス</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">絞り込み</h2>
+            <p className="mt-1 text-xs sm:text-sm text-gray-500">
+              {activeFilterSummaries.length > 0
+                ? `現在の条件: ${activeFilterSummaries.join(' / ')}`
+                : '条件を開いて絞り込めます。'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsFilterOpen((prev) => !prev)}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            aria-expanded={isFilterOpen}
+            aria-controls="deal-filter-panel"
+          >
+            {isFilterOpen ? '閉じる' : '開く'}
+            <svg
+              className={`h-4 w-4 transition-transform ${isFilterOpen ? 'rotate-180' : ''}`}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
             >
-              <option value="">すべて</option>
-              {visibleStatusKeys.map((status) => (
-                <option key={status} value={status}>
-                  {STATUS_CONFIG[status].label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Assigned To Filter */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-medium text-gray-700">
-              担当者 <span className="text-xs text-gray-500">(デフォルト: あなたの案件)</span>
-            </label>
-            <select
-              value={assignedToFilter}
-              onChange={(e) => setAssignedToFilter(e.target.value)}
-              disabled={role === 'sales'}
-              className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {role !== 'sales' && <option value="">すべて</option>}
-              {displayUsers.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Deal Date From Filter */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-medium text-gray-700">商談日(From)</label>
-            <input
-              type="date"
-              value={dealDateFromFilter}
-              onChange={(e) => setDealDateFromFilter(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* Deal Date To Filter */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-medium text-gray-700">商談日(To)</label>
-            <input
-              type="date"
-              value={dealDateToFilter}
-              onChange={(e) => setDealDateToFilter(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* Agency Filter */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-medium text-gray-700">代理店</label>
-            <AgencySearchSelect
-              value={agencyFilter}
-              onChange={(code) => setAgencyFilter(code)}
-              agencies={displayAgencies}
-              placeholder="すべて"
-            />
-          </div>
-
-          {/* Source Filter */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs sm:text-sm font-medium text-gray-700">流入経路</label>
-            <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">すべて</option>
-              {displaySources.map((source) => (
-                <option key={source.code} value={source.code}>
-                  {source.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Buttons */}
-          <div className="col-span-2 flex gap-2 sm:ml-auto sm:col-span-auto">
-            <button
-              onClick={handleSearch}
-              className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm"
-            >
-              検索
-            </button>
-            <button
-              onClick={handleReset}
-              className="flex-1 sm:flex-none border border-gray-300 hover:bg-gray-100 text-gray-700 font-medium px-4 py-2 rounded-lg transition text-sm"
-            >
-              リセット
-            </button>
-          </div>
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.24 4.5a.75.75 0 0 1-1.08 0l-4.24-4.5a.75.75 0 0 1 .02-1.06Z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
         </div>
+
+        {isFilterOpen && (
+          <div id="deal-filter-panel" className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-4">
+            {/* Status Filter */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs sm:text-sm font-medium text-gray-700">ステータス</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">すべて</option>
+                {visibleStatusKeys.map((status) => (
+                  <option key={status} value={status}>
+                    {STATUS_CONFIG[status].label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Assigned To Filter */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs sm:text-sm font-medium text-gray-700">
+                担当者 <span className="text-xs text-gray-500">(デフォルト: あなたの案件)</span>
+              </label>
+              <select
+                value={assignedToFilter}
+                onChange={(e) => setAssignedToFilter(e.target.value)}
+                disabled={role === 'sales'}
+                className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {role !== 'sales' && <option value="">すべて</option>}
+                {displayUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Deal Date From Filter */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs sm:text-sm font-medium text-gray-700">商談日(From)</label>
+              <input
+                type="date"
+                value={dealDateFromFilter}
+                onChange={(e) => setDealDateFromFilter(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Deal Date To Filter */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs sm:text-sm font-medium text-gray-700">商談日(To)</label>
+              <input
+                type="date"
+                value={dealDateToFilter}
+                onChange={(e) => setDealDateToFilter(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Agency Filter */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs sm:text-sm font-medium text-gray-700">代理店</label>
+              <AgencySearchSelect
+                value={agencyFilter}
+                onChange={(code) => setAgencyFilter(code)}
+                agencies={displayAgencies}
+                placeholder="すべて"
+              />
+            </div>
+
+            {/* Source Filter */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs sm:text-sm font-medium text-gray-700">流入経路</label>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">すべて</option>
+                {displaySources.map((source) => (
+                  <option key={source.code} value={source.code}>
+                    {source.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Buttons */}
+            <div className="col-span-2 flex gap-2 sm:ml-auto sm:col-span-auto">
+              <button
+                onClick={handleSearch}
+                className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition text-sm"
+              >
+                検索
+              </button>
+              <button
+                onClick={handleReset}
+                className="flex-1 sm:flex-none border border-gray-300 hover:bg-gray-100 text-gray-700 font-medium px-4 py-2 rounded-lg transition text-sm"
+              >
+                リセット
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Count */}

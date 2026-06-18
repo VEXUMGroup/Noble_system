@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { RESULT_STATUS_TO_DEAL_STATUS } from '@/lib/types';
@@ -28,9 +28,29 @@ interface DealDetailPageProps {
   params: { id: string };
 }
 
+function sortForStableStringify(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortForStableStringify);
+  }
+  if (value && typeof value === 'object') {
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, key) => {
+        acc[key] = sortForStableStringify((value as Record<string, unknown>)[key]);
+        return acc;
+      }, {});
+  }
+  return value;
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(sortForStableStringify(value));
+}
+
 export default function DealDetailPage({ params }: DealDetailPageProps) {
   const router = useRouter();
   const { users, sources, agencies, statuses } = useMasterData();
+  const NO_SOURCE_LABELS = new Set(['流入経路なし', '流入経路無し', '不明', 'なし']);
   const interviewStatuses = statuses.filter(s => s.code.startsWith('ST_')).map(s => s.name);
   const resultStatuses = statuses.filter(s => s.code.startsWith('RS_')).map(s => s.name);
   const [deal, setDeal] = useState<Record<string, any> | null>(null);
@@ -102,6 +122,129 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const [editMemo, setEditMemo] = useState('');
   const [customFieldDefs, setCustomFieldDefs] = useState<DealCustomFieldDefinition[]>([]);
   const [editCustomData, setEditCustomData] = useState<Record<string, any>>({});
+  const [isCustomerFormReady, setIsCustomerFormReady] = useState(false);
+  const customerSaveTimerRef = useRef<number | null>(null);
+  const customerSavePromiseRef = useRef<Promise<boolean> | null>(null);
+  const lastSavedCustomerSnapshotRef = useRef<string>('');
+
+  function normalizeSourceValue(value?: string | null) {
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    if (!trimmed) return '';
+    if (NO_SOURCE_LABELS.has(trimmed)) return '';
+    if (sources.some((s) => s.code === trimmed && NO_SOURCE_LABELS.has(s.name.trim()))) return '';
+    return trimmed;
+  }
+
+  const getCurrentDealProgressValidation = () =>
+    validateDealProgressInput(
+      {
+        assigned_to: deal?.assigned_to ?? '',
+        deal_date: deal?.deal_date ?? '',
+        age: String(deal?.custom_data?.age ?? deal?.age ?? ''),
+        email: deal?.email ?? deal?.custom_data?.email ?? '',
+        source: normalizeSourceValue(deal?.source),
+        referrer: deal?.agency_code ?? deal?.referrer ?? '',
+      },
+      {
+        sourceCodes: sources.map((s) => s.code),
+        agencyCodes: agencies.map((a) => a.code),
+      }
+    );
+
+  const getEditDealProgressValidation = () =>
+    validateDealProgressInput(
+      {
+        assigned_to: editAssignedTo,
+        deal_date: editDealDate,
+        age: String(editCustomData?.age ?? ''),
+        email: editEmail,
+        source: normalizeSourceValue(editSourceCode),
+        referrer: editAgencyCode,
+      },
+      {
+        sourceCodes: sources.map((s) => s.code),
+        agencyCodes: agencies.map((a) => a.code),
+      }
+    );
+
+  const currentDealProgressValidation = getCurrentDealProgressValidation();
+  const editDealProgressValidation = getEditDealProgressValidation();
+  const currentDealProgressError = getDealProgressValidationMessage(currentDealProgressValidation);
+  const editDealProgressError = getDealProgressValidationMessage(editDealProgressValidation);
+
+  const getCustomerSavePayload = () => {
+    const normalizedSource = normalizeSourceValue(editDealProgressValidation.normalized.source);
+    const normalizedReferrer = editDealProgressValidation.normalized.referrer || null;
+    const normalizedEmail = editEmail.trim();
+    const normalizedPhone = editPhone.trim();
+    return {
+      customer_name: editCustomerName.trim(),
+      assigned_to: editDealProgressValidation.normalized.assigned_to,
+      deal_date: editDealProgressValidation.normalized.deal_date,
+      retirement_date: editRetirementDate || null,
+      source: normalizedSource || null,
+      agency_code: normalizedReferrer,
+      result_status: editResultStatus || null,
+      email: normalizedEmail || null,
+      phone: normalizedPhone || null,
+      prospect_level: editProspectLevel || null,
+      agency_type: editAgencyType || null,
+      memo: editMemo || null,
+      custom_data: {
+        ...(editCustomData ?? {}),
+        email: normalizedEmail || undefined,
+        phone: normalizedPhone || undefined,
+      },
+      updated_at: new Date().toISOString(),
+    };
+  };
+
+  const getPersistedCustomerSnapshot = () =>
+    stableStringify({
+      customer_name: deal?.customer_name ?? '',
+      assigned_to: deal?.assigned_to ?? '',
+      deal_date: deal?.deal_date ?? '',
+      retirement_date: deal?.retirement_date ?? '',
+      source: normalizeSourceValue(deal?.source),
+      agency_code: deal?.agency_code ?? deal?.referrer ?? '',
+      result_status: deal?.result_status ?? '',
+      email: deal?.email ?? deal?.custom_data?.email ?? '',
+      phone: deal?.phone ?? deal?.custom_data?.phone ?? '',
+      prospect_level: deal?.prospect_level ?? '',
+      agency_type: deal?.agency_type ?? '',
+      memo: deal?.memo ?? '',
+      custom_data: {
+        ...(deal?.custom_data ?? {}),
+        email: deal?.email ?? deal?.custom_data?.email ?? undefined,
+        phone: deal?.phone ?? deal?.custom_data?.phone ?? undefined,
+      },
+    });
+
+  const getCurrentCustomerSnapshot = () =>
+    stableStringify({
+      customer_name: editCustomerName.trim(),
+      assigned_to: editDealProgressValidation.normalized.assigned_to,
+      deal_date: editDealProgressValidation.normalized.deal_date,
+      retirement_date: editRetirementDate || '',
+      source: normalizeSourceValue(editDealProgressValidation.normalized.source),
+      agency_code: editDealProgressValidation.normalized.referrer || '',
+      result_status: editResultStatus || '',
+      email: editEmail.trim(),
+      phone: editPhone.trim(),
+      prospect_level: editProspectLevel || '',
+      agency_type: editAgencyType || '',
+      memo: editMemo || '',
+      custom_data: {
+        ...(editCustomData ?? {}),
+        email: editEmail.trim() || undefined,
+        phone: editPhone.trim() || undefined,
+      },
+    });
+
+  const currentCustomerSnapshot = getCurrentCustomerSnapshot();
+  const persistedCustomerSnapshot = deal ? getPersistedCustomerSnapshot() : '';
+  const hasUnsavedCustomerChanges =
+    isCustomerFormReady && !!deal && currentCustomerSnapshot !== persistedCustomerSnapshot;
 
   useEffect(() => {
     if (!deal) return;
@@ -109,15 +252,17 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setEditAssignedTo(deal.assigned_to ?? '');
     setEditDealDate(deal.deal_date ?? '');
     setEditRetirementDate(deal.retirement_date ?? '');
-    setEditSourceCode(deal.source ?? '');
+    setEditSourceCode(normalizeSourceValue(deal.source));
     setEditAgencyCode(deal.agency_code ?? '');
     setEditResultStatus(deal.result_status ?? '');
     setEditEmail(deal.email ?? deal.custom_data?.email ?? '');
-    setEditPhone(deal.phone ?? '');
+    setEditPhone(deal.phone ?? deal.custom_data?.phone ?? '');
     setEditProspectLevel(deal.prospect_level ?? '');
     setEditAgencyType(deal.agency_type ?? '');
     setEditMemo(deal.memo ?? '');
     setEditCustomData((deal.custom_data ?? {}) as Record<string, any>);
+    lastSavedCustomerSnapshotRef.current = getPersistedCustomerSnapshot();
+    setIsCustomerFormReady(true);
   }, [deal]);
 
   useEffect(() => {
@@ -134,48 +279,91 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     };
   }, []);
 
-  const getCurrentDealProgressValidation = () =>
-    validateDealProgressInput(
-      {
-        assigned_to: deal?.assigned_to ?? '',
-        deal_date: deal?.deal_date ?? '',
-        age: String(deal?.custom_data?.age ?? deal?.age ?? ''),
-        email: deal?.email ?? deal?.custom_data?.email ?? '',
-        source: deal?.source ?? '',
-        referrer: deal?.agency_code ?? deal?.referrer ?? '',
-      },
-      {
-        sourceCodes: sources.map((s) => s.code),
-        agencyCodes: agencies.map((a) => a.code),
-      }
-    );
-
-  const getEditDealProgressValidation = () =>
-    validateDealProgressInput(
-      {
-        assigned_to: editAssignedTo,
-        deal_date: editDealDate,
-        age: String(editCustomData?.age ?? ''),
-        email: editEmail,
-        source: editSourceCode,
-        referrer: editAgencyCode,
-      },
-      {
-        sourceCodes: sources.map((s) => s.code),
-        agencyCodes: agencies.map((a) => a.code),
-      }
-    );
-
-  const currentDealProgressValidation = getCurrentDealProgressValidation();
-  const editDealProgressValidation = getEditDealProgressValidation();
-  const currentDealProgressError = getDealProgressValidationMessage(currentDealProgressValidation);
-  const editDealProgressError = getDealProgressValidationMessage(editDealProgressValidation);
-
   useEffect(() => {
     if (currentDealProgressValidation.isValid && transitionError) {
       setTransitionError('');
     }
   }, [currentDealProgressValidation.isValid, transitionError]);
+
+  const persistCustomerChanges = async (options: { silent?: boolean } = {}) => {
+    if (!deal) return false;
+
+    const snapshotBeforeSave = currentCustomerSnapshot;
+    if (snapshotBeforeSave === lastSavedCustomerSnapshotRef.current) {
+      return true;
+    }
+    if (customerSavePromiseRef.current) {
+      return customerSavePromiseRef.current;
+    }
+
+    if (!editDealProgressValidation.isValid) {
+      if (!options.silent) setInterviewError(editDealProgressError);
+      return false;
+    }
+
+    try {
+      validateCustomDataOrThrow(customFieldDefs, editCustomData ?? {});
+    } catch (e) {
+      if (!options.silent) {
+        setInterviewError(e instanceof Error ? e.message : 'カスタム項目の入力が不正です');
+      }
+      return false;
+    }
+
+    const savePromise = (async () => {
+      const supabase = createSupabaseBrowserClient();
+      const payload = getCustomerSavePayload();
+      const { data, error } = await supabase.from('deals').update(payload).eq('id', deal.id).select();
+      if (error) {
+        if (!options.silent) {
+          console.error('Update error:', error);
+          setInterviewError(`保存に失敗しました: ${error.code} - ${error.message}`);
+        } else {
+          console.error('Auto-save error:', error);
+          setInterviewError(`自動保存に失敗しました: ${error.code} - ${error.message}`);
+        }
+        return false;
+      }
+
+      lastSavedCustomerSnapshotRef.current = snapshotBeforeSave;
+      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
+      setInterviewError('');
+      if (!options.silent) {
+        setSuccessMessage('顧客詳細を保存しました');
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 2500);
+      }
+      return true;
+    })();
+
+    customerSavePromiseRef.current = savePromise;
+    try {
+      return await savePromise;
+    } finally {
+      if (customerSavePromiseRef.current === savePromise) {
+        customerSavePromiseRef.current = null;
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!isCustomerFormReady || !deal) return;
+    if (!hasUnsavedCustomerChanges) return;
+
+    if (customerSaveTimerRef.current !== null) {
+      window.clearTimeout(customerSaveTimerRef.current);
+    }
+
+    customerSaveTimerRef.current = window.setTimeout(() => {
+      void persistCustomerChanges({ silent: true });
+    }, 700);
+
+    return () => {
+      if (customerSaveTimerRef.current !== null) {
+        window.clearTimeout(customerSaveTimerRef.current);
+      }
+    };
+  }, [hasUnsavedCustomerChanges, isCustomerFormReady, deal, currentCustomerSnapshot]);
 
   if (dealLoading) {
     return (
@@ -197,7 +385,10 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   }
 
   // ── 面談記録を保存（NEW → INTERVIEWED or NEW のまま）
-  const handleSaveInterview = () => {
+  const handleSaveInterview = async () => {
+    if (!(await persistCustomerChanges())) {
+      return;
+    }
     if (!editDealProgressValidation.isValid) {
       setInterviewError(editDealProgressError);
       return;
@@ -207,29 +398,30 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       return;
     }
     const newStatus = interviewStatus === '面談実施' ? 'INTERVIEWED' : 'NEW';
-    (async () => {
-      const supabase = createSupabaseBrowserClient();
-      const payload = {
-        interview_status: interviewStatus,
-        status: newStatus,
-        updated_at: new Date().toISOString(),
-      };
-      const { error } = await supabase.from('deals').update(payload).eq('id', deal.id);
-      if (error) {
-        setInterviewError(error.message);
-        return;
-      }
-      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
-      setDealStatus(newStatus);
-      setInterviewError('');
-      setSuccessMessage('面談記録を保存しました');
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 2500);
-    })();
+    const supabase = createSupabaseBrowserClient();
+    const payload = {
+      interview_status: interviewStatus,
+      status: newStatus,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('deals').update(payload).eq('id', deal.id);
+    if (error) {
+      setInterviewError(error.message);
+      return;
+    }
+    setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
+    setDealStatus(newStatus);
+    setInterviewError('');
+    setSuccessMessage('面談記録を保存しました');
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 2500);
   };
 
   // ── 結果を保存（INTERVIEWED / CONSIDERING → 成約/検討/対象外/失注）
-  const handleSaveResult = () => {
+  const handleSaveResult = async () => {
+    if (!(await persistCustomerChanges())) {
+      return;
+    }
     if (!editDealProgressValidation.isValid) {
       setResultError(editDealProgressError);
       return;
@@ -239,46 +431,44 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       return;
     }
     const mappedStatus = RESULT_STATUS_TO_DEAL_STATUS[resultStatus];
-    (async () => {
-      const supabase = createSupabaseBrowserClient();
-      const payload: Record<string, unknown> = {
-        result_status: resultStatus,
-        status: mappedStatus,
-        hr_proposal: hrProposal || null,
-        hr_feasibility: hrFeasibility || null,
-        hr_target_28m: hrTarget28m || null,
-        next_action_date: nextActionDate || null,
-        considering_reason: null,
-        considering_reason_comment: null,
-        out_of_scope_reason: null,
-        out_of_scope_reason_comment: null,
-        lost_reason: null,
-        lost_reason_comment: null,
-        updated_at: new Date().toISOString(),
-      };
-      if (resultStatus === '検討') {
-        payload.considering_reason = consideringReason || null;
-        payload.considering_reason_comment = consideringComment || null;
-      }
-      if (resultStatus === '対象外') {
-        payload.out_of_scope_reason = outOfScopeReason || null;
-        payload.out_of_scope_reason_comment = outOfScopeComment || null;
-      }
-      if (resultStatus === '失注') {
-        payload.lost_reason = lostReason || null;
-        payload.lost_reason_comment = lostComment || null;
-      }
-      const { error } = await supabase.from('deals').update(payload).eq('id', deal.id);
-      if (error) {
-        setResultError(error.message);
-        return;
-      }
-      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
-      setDealStatus(mappedStatus);
-      setResultError('');
-      setSuccessMessage(`結果「${resultStatus}」を保存しました`);
-      setShowSuccess(true);
-    })();
+    const supabase = createSupabaseBrowserClient();
+    const payload: Record<string, unknown> = {
+      result_status: resultStatus,
+      status: mappedStatus,
+      hr_proposal: hrProposal || null,
+      hr_feasibility: hrFeasibility || null,
+      hr_target_28m: hrTarget28m || null,
+      next_action_date: nextActionDate || null,
+      considering_reason: null,
+      considering_reason_comment: null,
+      out_of_scope_reason: null,
+      out_of_scope_reason_comment: null,
+      lost_reason: null,
+      lost_reason_comment: null,
+      updated_at: new Date().toISOString(),
+    };
+    if (resultStatus === '検討') {
+      payload.considering_reason = consideringReason || null;
+      payload.considering_reason_comment = consideringComment || null;
+    }
+    if (resultStatus === '対象外') {
+      payload.out_of_scope_reason = outOfScopeReason || null;
+      payload.out_of_scope_reason_comment = outOfScopeComment || null;
+    }
+    if (resultStatus === '失注') {
+      payload.lost_reason = lostReason || null;
+      payload.lost_reason_comment = lostComment || null;
+    }
+    const { error } = await supabase.from('deals').update(payload).eq('id', deal.id);
+    if (error) {
+      setResultError(error.message);
+      return;
+    }
+    setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
+    setDealStatus(mappedStatus);
+    setResultError('');
+    setSuccessMessage(`結果「${resultStatus}」を保存しました`);
+    setShowSuccess(true);
 
     if (resultStatus === '成約') {
       setTimeout(() => router.push(`/deals/${deal.id}/contract-detail`), 1200);
@@ -288,54 +478,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   };
 
   // ── 顧客詳細を保存
-  const handleSaveCustomer = () => {
-    if (!editDealProgressValidation.isValid) {
-      setInterviewError(editDealProgressError);
-      return;
-    }
-    (async () => {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        try {
-          validateCustomDataOrThrow(customFieldDefs, editCustomData ?? {});
-        } catch (e) {
-          setInterviewError(e instanceof Error ? e.message : 'カスタム項目の入力が不正です');
-          return;
-        }
-        const payload = {
-          customer_name: editCustomerName.trim(),
-          assigned_to: editDealProgressValidation.normalized.assigned_to,
-          deal_date: editDealProgressValidation.normalized.deal_date,
-          retirement_date: editRetirementDate || null,
-          source: editDealProgressValidation.normalized.source || null,
-          agency_code: editDealProgressValidation.normalized.referrer || null,
-          result_status: editResultStatus || null,
-          email: editEmail || null,
-          phone: editPhone || null,
-          prospect_level: editProspectLevel || null,
-          agency_type: editAgencyType || null,
-          memo: editMemo || null,
-          custom_data: editCustomData ?? {},
-          updated_at: new Date().toISOString(),
-        };
-        console.log('Saving deal with payload:', payload);
-        const { data, error } = await supabase.from('deals').update(payload).eq('id', deal.id).select();
-        if (error) {
-          console.error('Update error:', error);
-          setInterviewError(`保存に失敗しました: ${error.code} - ${error.message}`);
-          return;
-        }
-        console.log('Update successful:', data);
-        setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
-        setInterviewError('');
-        setSuccessMessage('顧客詳細を保存しました');
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 2500);
-      } catch (err) {
-        console.error('Exception during save:', err);
-        setInterviewError(`保存中にエラーが発生しました: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    })();
+  const handleSaveCustomer = async () => {
+    await persistCustomerChanges();
   };
 
   // ── 編集キャンセル（元の値に戻す）
@@ -344,11 +488,11 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setEditAssignedTo(deal.assigned_to);
     setEditDealDate(deal.deal_date);
     setEditRetirementDate(deal.retirement_date);
-    setEditSourceCode(deal.source ?? '');
+    setEditSourceCode(normalizeSourceValue(deal.source));
     setEditAgencyCode(deal.agency_code ?? '');
     setEditResultStatus(deal.result_status ?? '');
     setEditEmail(deal.email ?? deal.custom_data?.email ?? '');
-    setEditPhone(deal.phone ?? '');
+    setEditPhone(deal.phone ?? deal.custom_data?.phone ?? '');
     setEditProspectLevel(deal.prospect_level ?? '');
     setEditAgencyType(deal.agency_type ?? '');
     setEditMemo(deal.memo ?? '');
@@ -377,8 +521,11 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const isContractedOrLater = ['CONTRACTED', 'DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(dealStatus);
   const isDetailEnteredOrLater = ['DETAIL_ENTERED', 'APPROVED', 'CONTRACT_SIGNED', 'PAYMENT_MANAGING', 'COMPLETED'].includes(dealStatus);
 
-  const guardDealProgressTransition = () => {
-    const validation = getCurrentDealProgressValidation();
+  const guardDealProgressTransition = async () => {
+    if (!(await persistCustomerChanges())) {
+      return false;
+    }
+    const validation = editDealProgressValidation;
     if (!validation.isValid) {
       setTransitionError(getDealProgressValidationMessage(validation));
       return false;
@@ -387,13 +534,13 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     return true;
   };
 
-  const handleProceedToContractDetail = () => {
-    if (!guardDealProgressTransition()) return;
+  const handleProceedToContractDetail = async () => {
+    if (!(await guardDealProgressTransition())) return;
     router.push(`/deals/${deal.id}/contract-detail`);
   };
 
-  const handleProceedToApproval = () => {
-    if (!guardDealProgressTransition()) return;
+  const handleProceedToApproval = async () => {
+    if (!(await guardDealProgressTransition())) return;
     router.push(`/deals/${deal.id}/approval`);
   };
 
@@ -523,9 +670,9 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">流入経路 <span className="text-red-500">*</span></label>
-                <select value={editSourceCode} onChange={(e) => setEditSourceCode(e.target.value)} className={inputClass}>
+                <select value={normalizeSourceValue(editSourceCode)} onChange={(e) => setEditSourceCode(e.target.value)} className={inputClass}>
                   <option value="">-- 未選択 --</option>
-                  {sources.map((s) => (
+                  {sources.filter((s) => !NO_SOURCE_LABELS.has(s.name.trim())).map((s) => (
                     <option key={s.code} value={s.code}>{s.name}</option>
                   ))}
                 </select>
@@ -674,7 +821,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
               ['メールアドレス *', deal.email ?? deal.custom_data?.email ?? '-'],
               ['電話番号', deal.phone ?? deal.custom_data?.phone ?? '-'],
               ['見込み顧客', deal.prospect_level ?? '-'],
-              ['流入経路（エルステ経由） *', sources.find((s) => s.code === deal.source)?.name ?? deal.source ?? '-'],
+              ['流入経路（エルステ経由） *', sources.find((s) => s.code === normalizeSourceValue(deal.source))?.name ?? normalizeSourceValue(deal.source) ?? '-'],
               ['紹介者（代理店経由）', agencies.find((a) => a.code === deal.agency_code)?.name ?? deal.agency_code ?? '-'],
               ['退職予定日', deal.retirement_date ? formatDate(deal.retirement_date) : '-'],
               ['代理店新旧', deal.agency_type ?? '-'],

@@ -103,6 +103,7 @@ export default function NewDealPage() {
         email: formData.email || undefined,
         phone: formData.phone || undefined,
       },
+      phone: formData.phone || undefined,
       result_status: formData.result_status || undefined,
       prospect_level: formData.prospect_level || undefined,
       referrer: formData.referrer || undefined,

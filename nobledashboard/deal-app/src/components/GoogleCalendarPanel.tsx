@@ -183,6 +183,7 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
                 email: email || undefined,
                 phone: phone || undefined,
               },
+              phone: phone || undefined,
               auto_register: true,
             }),
           });
@@ -374,6 +375,7 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
             email: normalized.email || undefined,
             phone: normalized.phone || undefined,
           },
+          phone: normalized.phone || undefined,
         }),
       });
       const json = await safeReadJson(res, '/api/deals/from-calendar');
@@ -561,24 +563,14 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
                     phone,
                   });
                 }}
-                className={[
-                  'w-full text-left px-4 sm:px-6 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors',
-                  special ? 'bg-amber-50/40' : '',
-                ].filter(Boolean).join(' ')}
+                className="w-full text-left px-4 sm:px-6 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors"
               >
                 <div
-                  className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${
-                    special ? 'bg-amber-500' : isToday ? 'bg-green-400' : 'bg-blue-300'
-                  }`}
+                  className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${isToday ? 'bg-green-400' : 'bg-blue-300'}`}
                 />
                 <div className="flex-grow min-w-0">
                   <div className="flex items-center gap-2 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{ev.summary ?? '（タイトルなし）'}</p>
-                    {special && (
-                      <span className="inline-flex flex-shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                        特例イベント
-                      </span>
-                    )}
                     {special && autoStatus === 'pending' && (
                       <span className="inline-flex flex-shrink-0 items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
                         自動登録中
@@ -599,9 +591,6 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
                 </div>
                 {ev.htmlLink && !special && (
                   <span className="text-xs text-blue-600 whitespace-nowrap flex-shrink-0">クリックで商談化</span>
-                )}
-                {special && dealId && (
-                  <span className="text-xs text-amber-700 whitespace-nowrap flex-shrink-0">詳細を見る</span>
                 )}
               </button>
             );
