@@ -43,6 +43,7 @@ export default function CustomersPage() {
     const map = new Map<string, CustomerSummary>();
     const contractOrLater = new Set([
       'CONTRACTED',
+      'RS_CONTRACT',
       'DETAIL_ENTERED',
       'APPROVED',
       'CONTRACT_SIGNED',
@@ -55,7 +56,8 @@ export default function CustomersPage() {
       const name: string = deal.customer_name ?? '（名前なし）';
       const existing = map.get(name);
       const custom = (deal.custom_data ?? {}) as Record<string, unknown>;
-      const age = custom.age != null && custom.age !== '' ? String(custom.age) : '';
+      const ageValue = deal.age ?? custom.age;
+      const age = ageValue != null && ageValue !== '' ? String(ageValue) : '';
       const email = custom.email != null && custom.email !== '' ? String(custom.email) : '';
       const phone = custom.phone != null && custom.phone !== '' ? String(custom.phone) : '';
 

@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { paymentPlanOptions, paymentMethodOptions } from '@/lib/constants';
 import { useMasterData } from '@/lib/useMasterData';
 import { getDeal } from '@/lib/supabase';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { updateDealById } from '@/lib/deals-api';
+import { nullIfEmpty } from '@/lib/deal-write';
 import {
   getDealProgressValidationMessage,
   validateDealProgressInput,
@@ -59,7 +60,7 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
     setContractPlanOther(deal.contract_plan_other || '');
     setPaymentPlan(deal.payment_plan || '');
     setPaymentMethod(deal.payment_method || '');
-    setPaymentDeadline(deal.payment_deadline || '');
+    setPaymentDeadline(typeof deal.payment_deadline === 'string' ? deal.payment_deadline : '');
     setIrregularNotes(deal.irregular_notes || '');
   }, [deal]);
 
@@ -114,28 +115,31 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
     }
 
     (async () => {
-      const supabase = createSupabaseBrowserClient();
       const payload = {
         contract_plan: contractPlan,
         contract_plan_other: contractPlan === 'その他' ? contractPlanOther : null,
         payment_plan: paymentPlan,
         payment_method: paymentMethod,
-        payment_deadline: paymentDeadline,
+        payment_deadline: nullIfEmpty(paymentDeadline),
         irregular_notes: irregularNotes || null,
         status: 'DETAIL_ENTERED',
         updated_at: new Date().toISOString(),
       };
-      const { error } = await supabase.from('deals').update(payload).eq('id', deal.id);
-      if (error) {
-        setErrorMessage(error.message);
+      try {
+        const updated = await updateDealById(deal.id, payload);
+        if (!updated) {
+          throw new Error('保存後のデータを取得できませんでした');
+        }
+        setDeal((prev) => (prev ? { ...prev, ...updated } : prev));
+        setErrorMessage('');
+        setShowSuccess(true);
+        setTimeout(() => {
+          router.push(`/deals/${params.id}`);
+        }, 1500);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : '保存に失敗しました');
         return;
       }
-      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
-      setErrorMessage('');
-      setShowSuccess(true);
-      setTimeout(() => {
-        router.push(`/deals/${params.id}`);
-      }, 1500);
     })();
   };
 
@@ -268,13 +272,12 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
               支払い期限 <span className="text-red-500">*</span>
             </label>
             <input
-              type="text"
+              type="date"
               value={paymentDeadline}
               onChange={(e) => {
                 setPaymentDeadline(e.target.value);
                 setErrorMessage('');
               }}
-              placeholder="自由記入（例：2026年6月末、初診日翌月末、締結後7日以内 など）"
               className={selectClass}
             />
           </div>

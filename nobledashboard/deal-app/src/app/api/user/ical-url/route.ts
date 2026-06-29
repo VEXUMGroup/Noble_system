@@ -5,7 +5,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 // GET: 保存済み iCal URL を取得
 export async function GET() {
   try {
-    const session = readAppSessionCookie();
+    const session = await readAppSessionCookie();
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
     const supabase = createSupabaseAdminClient();
@@ -31,7 +31,7 @@ export async function GET() {
 // PUT: iCal URL を保存（なければ作成、あれば更新）
 export async function PUT(req: NextRequest) {
   try {
-    const session = readAppSessionCookie();
+    const session = await readAppSessionCookie();
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
@@ -73,7 +73,7 @@ export async function PUT(req: NextRequest) {
 // DELETE: iCal URL を削除
 export async function DELETE() {
   try {
-    const session = readAppSessionCookie();
+    const session = await readAppSessionCookie();
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
     const supabase = createSupabaseAdminClient();

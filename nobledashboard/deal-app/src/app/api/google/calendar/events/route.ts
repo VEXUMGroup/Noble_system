@@ -4,7 +4,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { fetchICalEvents, isSpecialCalendarEvent } from '@/lib/ical';
 export async function GET() {
   try {
-    const session = readAppSessionCookie();
+    const session = await readAppSessionCookie();
     if (!session) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }

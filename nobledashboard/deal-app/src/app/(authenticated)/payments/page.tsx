@@ -66,7 +66,10 @@ export default function PaymentsPage() {
         (deal) =>
           deal.status === 'PAYMENT_MANAGING' ||
           deal.status === 'COMPLETED' ||
-          deal.status === 'CONTRACT_SIGNED'
+          deal.status === 'CONTRACT_SIGNED' ||
+          deal.status === 'RS_CONTRACT' ||
+          deal.status === 'DETAIL_ENTERED' ||
+          deal.status === 'APPROVED'
       )
       .map((deal): PaymentDealInfo => {
         const history = paymentRecords.filter((r) => r.deal_id === deal.id);

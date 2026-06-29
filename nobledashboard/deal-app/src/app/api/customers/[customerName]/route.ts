@@ -6,7 +6,7 @@ export async function DELETE(
   _request: Request,
   { params }: { params: { customerName: string } }
 ) {
-  const session = readAppSessionCookie();
+  const session = await readAppSessionCookie();
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const customerName = decodeURIComponent(params.customerName ?? '');
@@ -18,4 +18,3 @@ export async function DELETE(
 
   return NextResponse.json({ ok: true });
 }
-

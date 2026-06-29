@@ -18,17 +18,18 @@ export default function ReviewPage() {
   const router = useRouter();
   const [dismissedAlert, setDismissedAlert] = useState<string | null>(null);
 
-  const { deals: rawDeals, isLoading: dealsLoading } = useDeals({ status: 'CONSIDERING' });
+  const { deals: rawDeals, isLoading: dealsLoading } = useDeals();
   const { users, plans, sources, agencies, isLoading: masterLoading } = useMasterData();
   const deals = rawDeals as unknown as DealRow[];
   const getUserName = (userId: string) => users.find((u) => u.id === userId)?.name ?? userId ?? '-';
   const getPlanName = (code?: string) => plans.find((p) => p.code === code)?.name ?? code ?? '-';
   const getAgencyName = (code?: string) => agencies.find((a) => a.code === code)?.name ?? code ?? '-';
   const getSourceName = (code?: string) => sources.find((s) => s.code === code)?.name ?? code ?? '-';
+  const consideringStatusCodes = new Set(['CONSIDERING', 'RS_PEND', 'RS_IN_PROG', 'RS_REDEAL']);
 
-  // Filter deals with CONSIDERING status
+  // Filter deals with consideration / active follow-up status
   const consideringDeals = useMemo<DealRow[]>(() => {
-    return deals.filter((deal) => deal.status === 'CONSIDERING');
+    return deals.filter((deal) => consideringStatusCodes.has(String(deal.status ?? '')));
   }, [deals]);
 
   // Calculate days remaining and sort

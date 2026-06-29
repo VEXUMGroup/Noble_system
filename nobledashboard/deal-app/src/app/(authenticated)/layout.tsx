@@ -8,7 +8,7 @@ export default async function AuthenticatedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = readAppSessionCookie();
+  const session = await readAppSessionCookie();
   if (!session) {
     redirect('/');
   }

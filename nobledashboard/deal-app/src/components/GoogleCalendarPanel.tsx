@@ -206,6 +206,13 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
             continue;
           }
 
+          console.warn('[GoogleCalendarPanel] auto register rejected:', {
+            eventId,
+            status: res.status,
+            error: json?.error,
+            message: json?.message,
+            field_errors: json?.field_errors,
+          });
           setSpecialEventState(eventId, 'failed');
           specialEventInFlightRef.current.delete(eventId);
         } catch (e) {

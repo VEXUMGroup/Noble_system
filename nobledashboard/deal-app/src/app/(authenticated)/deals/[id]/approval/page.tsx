@@ -11,7 +11,7 @@ import {
 import { formatCurrency, formatDate, getDaysUntil } from '@/lib/format';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { getDeal } from '@/lib/supabase';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { updateDealById } from '@/lib/deals-api';
 import { useMasterData } from '@/lib/useMasterData';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import {
@@ -99,19 +99,22 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
       return;
     }
     (async () => {
-      const supabase = createSupabaseBrowserClient();
       const payload = { status: 'APPROVED', updated_at: new Date().toISOString() };
-      const { error } = await supabase.from('deals').update(payload).eq('id', params.id);
-      if (error) {
-        alert(error.message);
+      try {
+        const updated = await updateDealById(params.id, payload);
+        if (!updated) {
+          throw new Error('保存後のデータを取得できませんでした');
+        }
+        setDeal((prev) => (prev ? { ...prev, ...updated } : prev));
+        setSuccessMessage('承認が完了しました。締結工程へ進行できます。');
+        setShowSuccess(true);
+        setTimeout(() => {
+          router.push(`/deals/${params.id}/contract`);
+        }, 1500);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : '保存に失敗しました');
         return;
       }
-      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
-      setSuccessMessage('承認が完了しました。締結工程へ進行できます。');
-      setShowSuccess(true);
-      setTimeout(() => {
-        router.push(`/deals/${params.id}`);
-      }, 1500);
     })();
   };
 
@@ -131,23 +134,26 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
       return;
     }
     (async () => {
-      const supabase = createSupabaseBrowserClient();
       const payload = {
         status: 'CONTRACTED',
         memo: rejectComment.trim(),
         updated_at: new Date().toISOString(),
       };
-      const { error } = await supabase.from('deals').update(payload).eq('id', params.id);
-      if (error) {
-        alert(error.message);
+      try {
+        const updated = await updateDealById(params.id, payload);
+        if (!updated) {
+          throw new Error('保存後のデータを取得できませんでした');
+        }
+        setDeal((prev) => (prev ? { ...prev, ...updated } : prev));
+        setSuccessMessage('「成約」ステータスに差し戻しました。営業担当へ承認依頼通知を送信しました。');
+        setShowSuccess(true);
+        setTimeout(() => {
+          router.push(`/deals/${params.id}`);
+        }, 1500);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : '保存に失敗しました');
         return;
       }
-      setDeal((prev) => (prev ? { ...prev, ...payload } : prev));
-      setSuccessMessage('「成約」ステータスに差し戻しました。営業担当へ承認依頼通知を送信しました。');
-      setShowSuccess(true);
-      setTimeout(() => {
-        router.push(`/deals/${params.id}`);
-      }, 1500);
     })();
   };
 
@@ -257,6 +263,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
         {!showRejectForm ? (
           <div className="flex flex-col sm:flex-row gap-3">
             <button
+              type="button"
               disabled={isReadOnly || !dealProgressValidation.isValid}
               onClick={handleApprove}
               className="flex-1 sm:flex-none px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed"
@@ -264,6 +271,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
               承認
             </button>
             <button
+              type="button"
               disabled={isReadOnly || !dealProgressValidation.isValid}
               onClick={() => setShowRejectForm(true)}
               className="flex-1 sm:flex-none px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed"
@@ -287,6 +295,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
             </div>
             <div className="flex gap-3">
               <button
+                type="button"
                 onClick={handleReject}
                 disabled={!dealProgressValidation.isValid}
                 className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
@@ -294,6 +303,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
                 送信
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setShowRejectForm(false);
                   setRejectComment('');

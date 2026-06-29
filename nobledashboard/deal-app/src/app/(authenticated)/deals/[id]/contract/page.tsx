@@ -9,7 +9,7 @@ import {
 } from '@/lib/types';
 import { formatCurrency, formatDate, getDaysUntil } from '@/lib/format';
 import { getDeal } from '@/lib/supabase';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { updateDealById } from '@/lib/deals-api';
 import { useMasterData } from '@/lib/useMasterData';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 
@@ -65,6 +65,7 @@ export default function ContractPage({ params }: ContractPageProps) {
   const [contractDate, setContractDate] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!deal) return;
@@ -118,17 +119,33 @@ export default function ContractPage({ params }: ContractPageProps) {
       return;
     }
 
-    deal.address = `${postalCode} ${prefecture}${city}${address}`;
-    deal.contract_date = contractDate;
-    deal.contract_confirmation = '完了';
-    deal.status = 'CONTRACT_SIGNED';
-    deal.updated_at = new Date().toISOString();
-
-    setErrorMessage('');
-    setShowSuccess(true);
-    setTimeout(() => {
-      router.push(`/deals/${params.id}`);
-    }, 1500);
+    (async () => {
+      setIsSaving(true);
+      const payload = {
+        address: `${postalCode} ${prefecture}${city}${address}`,
+        contract_date: contractDate,
+        contract_confirmation: '完了',
+        status: 'CONTRACT_SIGNED',
+        updated_at: new Date().toISOString(),
+      };
+      try {
+        const updated = await updateDealById(deal.id, payload);
+        if (!updated) {
+          throw new Error('保存後のデータを取得できませんでした');
+        }
+        setDeal((prev) => (prev ? { ...prev, ...updated } : prev));
+        setErrorMessage('');
+        setShowSuccess(true);
+        setTimeout(() => {
+          router.push(`/deals/${params.id}`);
+        }, 1500);
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : '保存に失敗しました');
+        setIsSaving(false);
+        return;
+      }
+      setIsSaving(false);
+    })();
   };
 
   return (
@@ -265,11 +282,11 @@ export default function ContractPage({ params }: ContractPageProps) {
             </button>
             <button
               type="button"
-              disabled={isReadOnly}
+              disabled={isReadOnly || isSaving}
               onClick={handleComplete}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-gray-400 disabled:hover:bg-gray-400 disabled:cursor-not-allowed"
             >
-              締結完了
+              {isSaving ? '保存中...' : '締結完了'}
             </button>
           </div>
         </form>

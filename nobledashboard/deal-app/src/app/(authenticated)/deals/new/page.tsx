@@ -7,6 +7,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useMasterData } from '@/lib/useMasterData';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
 import { validateDealProgressInput } from '@/lib/deal-progress-validation';
+import { nullIfEmpty, stripCustomDataColumn, writeDealWithCustomDataFallback } from '@/lib/deal-write';
 
 interface FormData {
   customer_name: string;
@@ -96,8 +97,10 @@ export default function NewDealPage() {
       assigned_to: formData.assigned_to,
       deal_date: formData.deal_date,
       source: formData.source,
+      age: nullIfEmpty(formData.age),
       status: 'NEW', // マイグレーション 003 実行後は NULL 許容に変更予定
-      retirement_date: formData.retirement_date,
+      retirement_date: nullIfEmpty(formData.retirement_date),
+      email: formData.email || undefined,
       custom_data: {
         age: formData.age ? Number(String(formData.age).replace(/[^\d]/g, '')) || formData.age : undefined,
         email: formData.email || undefined,
@@ -109,7 +112,7 @@ export default function NewDealPage() {
       referrer: formData.referrer || undefined,
       agency_type: formData.agency_type || undefined,
       memo: formData.memo || undefined,
-      next_action_date: formData.next_action_date || undefined,
+      next_action_date: nullIfEmpty(formData.next_action_date),
       recording_url: formData.recording_url || undefined,
       remarks: formData.remarks || undefined,
       created_by: 'USR001', // System user (暫定：マイグレーション 003 の NOT NULL DROP 実行待機中)
@@ -119,7 +122,11 @@ export default function NewDealPage() {
     };
 
     const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.from('deals').insert(newDeal);
+    const { error } = await writeDealWithCustomDataFallback(
+      'deals/new insert',
+      async () => await supabase.from('deals').insert(newDeal),
+      async () => await supabase.from('deals').insert(stripCustomDataColumn(newDeal))
+    );
     if (error) {
       setErrors((prev) => ({ ...prev, customer_name: error.message }));
       return;

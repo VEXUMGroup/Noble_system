@@ -3,7 +3,7 @@ import { readAppSessionCookie } from '@/lib/auth/app-session';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export async function GET() {
-  const session = readAppSessionCookie();
+  const session = await readAppSessionCookie();
   if (!session) return NextResponse.json({ userId: null }, { status: 401 });
 
   try {

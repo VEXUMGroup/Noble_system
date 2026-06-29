@@ -23,10 +23,11 @@ export default function DealsPage() {
     dealsRefreshToken
   );
   const deals = rawDeals as unknown as Array<Record<string, any>>;
-  const { users, sources, agencies, isLoading: masterLoading } = useMasterData();
+  const { users, sources, agencies, statuses, isLoading: masterLoading } = useMasterData();
   const displayUsers = users;
   const displaySources = sources;
   const displayAgencies = agencies;
+  const displayStatuses = statuses;
   const NO_SOURCE_LABELS = new Set(['流入経路なし', '流入経路無し', '不明', 'なし']);
 
   const getUserName = (userId: string) =>
@@ -44,13 +45,14 @@ export default function DealsPage() {
   // 商談一覧では「成約以上」を表示しない（成約〜完了の内部ステータスを除外）
   const hiddenStatuses = new Set([
     'CONTRACTED',
+    'RS_CONTRACT',
     'DETAIL_ENTERED',
     'APPROVED',
     'CONTRACT_SIGNED',
     'PAYMENT_MANAGING',
     'COMPLETED',
   ]);
-  const visibleStatusKeys = Object.keys(STATUS_CONFIG).filter((status) => !hiddenStatuses.has(status));
+  const visibleStatusKeys = displayStatuses.filter((status: Record<string, any>) => !hiddenStatuses.has(status.code));
 
   // Filter states - 担当者フィルターは現在のユーザーでプリセット
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -193,9 +195,9 @@ export default function DealsPage() {
                 className="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">すべて</option>
-                {visibleStatusKeys.map((status) => (
-                  <option key={status} value={status}>
-                    {STATUS_CONFIG[status].label}
+                {visibleStatusKeys.map((status: Record<string, any>) => (
+                  <option key={status.code} value={status.code}>
+                    {status.name}
                   </option>
                 ))}
               </select>

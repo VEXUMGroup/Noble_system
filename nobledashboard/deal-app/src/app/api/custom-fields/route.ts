@@ -15,7 +15,7 @@ async function requireManagerRole(userId: string) {
 }
 
 export async function GET() {
-  const session = readAppSessionCookie();
+  const session = await readAppSessionCookie();
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const supabase = createSupabaseAdminClient();
@@ -29,7 +29,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const session = readAppSessionCookie();
+  const session = await readAppSessionCookie();
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   try {
@@ -88,4 +88,3 @@ export async function POST(request: NextRequest) {
   }
   return NextResponse.json({ data });
 }
-

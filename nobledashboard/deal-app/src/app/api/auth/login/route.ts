@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const response = NextResponse.json({ ok: true });
-    await setAppSessionCookie(token);
+    setAppSessionCookie(response, token);
     return response;
   } catch (caughtError) {
     console.error('[auth] unexpected error', caughtError);

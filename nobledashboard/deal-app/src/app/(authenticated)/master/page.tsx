@@ -281,14 +281,6 @@ export default function MasterPage() {
         <div className="flex items-center gap-3">
           {isAdmin && (
             <button
-              onClick={() => router.push('/master/custom-fields')}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm transition"
-            >
-              商談カスタム項目設定
-            </button>
-          )}
-          {isAdmin && (
-            <button
               onClick={openAddModal}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition"
             >

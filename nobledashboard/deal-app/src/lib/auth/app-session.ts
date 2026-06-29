@@ -1,5 +1,5 @@
-import { cookies } from 'next/headers';
 import crypto from 'crypto';
+import { NextResponse } from 'next/server';
 
 const COOKIE_NAME = 'app_session';
 
@@ -53,10 +53,8 @@ export function verifySessionToken(token: string): SessionPayload | null {
   return payload;
 }
 
-export async function setAppSessionCookie(token: string) {
-  'use server';
-  const store = await cookies();
-  store.set(COOKIE_NAME, token, {
+export function setAppSessionCookie(response: NextResponse, token: string) {
+  response.cookies.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
@@ -64,10 +62,8 @@ export async function setAppSessionCookie(token: string) {
   });
 }
 
-export async function clearAppSessionCookie() {
-  'use server';
-  const store = await cookies();
-  store.set(COOKIE_NAME, '', {
+export function clearAppSessionCookie(response: NextResponse) {
+  response.cookies.set(COOKIE_NAME, '', {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
@@ -76,8 +72,9 @@ export async function clearAppSessionCookie() {
   });
 }
 
-export function readAppSessionCookie() {
+export async function readAppSessionCookie() {
   try {
+    const { cookies } = await import('next/headers');
     const store = cookies();
     const token = store.get(COOKIE_NAME)?.value;
     if (!token) return null;

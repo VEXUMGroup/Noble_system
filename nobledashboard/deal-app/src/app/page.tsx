@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { LoginCard } from '@/components/auth/LoginCard';
-import { clearAppSessionCookie, readAppSessionCookie } from '@/lib/auth/app-session';
+import { readAppSessionCookie } from '@/lib/auth/app-session';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 type LoginPageProps = {
@@ -12,20 +12,15 @@ type LoginPageProps = {
 
 function sanitizeNextPath(nextPath?: string) {
   if (!nextPath || !nextPath.startsWith('/') || nextPath.startsWith('//')) {
-    return '/deals';
+    return '/dashboard';
   }
 
   return nextPath;
 }
 
-async function clearInvalidSession() {
-  'use server';
-  clearAppSessionCookie();
-}
-
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const nextPath = sanitizeNextPath(searchParams?.next);
-  const session = readAppSessionCookie();
+  const session = await readAppSessionCookie();
   if (session?.userId) {
     try {
       const supabase = createSupabaseAdminClient();
@@ -43,8 +38,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       // If the server cannot verify the member record, fall back to rendering login.
     }
 
-    // Session exists but member is invalid/inactive → clear session to avoid redirect loops.
-    await clearInvalidSession();
   }
 
   return (

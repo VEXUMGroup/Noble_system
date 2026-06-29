@@ -9,6 +9,25 @@ type NavGroup = { label: string; href: string; icon: JSX.Element; children?: Nav
 
 const navGroups: NavGroup[] = [
   {
+    label: 'ダッシュボード',
+    href: '/dashboard',
+    icon: (
+      <svg
+        className="w-5 h-5"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"
+        />
+      </svg>
+    ),
+  },
+  {
     label: '商談一覧',
     href: '/deals',
     icon: (
@@ -26,6 +45,12 @@ const navGroups: NavGroup[] = [
         />
       </svg>
     ),
+    children: [
+      {
+        label: '新規商談',
+        href: '/deals/new',
+      },
+    ],
   },
   {
     label: '検討管理',

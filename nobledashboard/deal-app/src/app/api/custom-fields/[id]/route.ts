@@ -15,7 +15,7 @@ async function requireManagerRole(userId: string) {
 }
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  const session = readAppSessionCookie();
+  const session = await readAppSessionCookie();
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   try {
@@ -82,7 +82,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
-  const session = readAppSessionCookie();
+  const session = await readAppSessionCookie();
   if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   try {
@@ -100,4 +100,3 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
-

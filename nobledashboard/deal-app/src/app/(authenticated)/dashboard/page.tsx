@@ -3,18 +3,14 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { STATUS_CONFIG } from '@/lib/types';
 import {
   mockDeals,
-  mockUsers,
   mockNotifications,
   getUserName,
-  formatCurrency,
   formatDate,
   getDaysUntil,
 } from '@/lib/mock-data';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { GoogleCalendarPanel } from '@/components/GoogleCalendarPanel';
 
 // Icons
 const AlertCircle = ({ className }: { className?: string }) => (
@@ -116,27 +112,6 @@ export default function DashboardPage() {
 
   const consideringDeals = mockDeals.filter((d) => d.status === 'CONSIDERING').length;
 
-  // Calculate this month's contracted amount
-  const today = new Date('2026-04-16');
-  const thisMonthContracted = mockDeals
-    .filter((d) => {
-      const updatedAt = new Date(d.updated_at);
-      const contractedStatuses = [
-        'CONTRACTED',
-        'DETAIL_ENTERED',
-        'APPROVED',
-        'CONTRACT_SIGNED',
-        'PAYMENT_MANAGING',
-        'COMPLETED',
-      ];
-      return (
-        updatedAt.getMonth() === today.getMonth() &&
-        updatedAt.getFullYear() === today.getFullYear() &&
-        contractedStatuses.includes(d.status)
-      );
-    })
-    .reduce((sum, d) => sum + (d.amount || 0), 0);
-
   // Get deals within 14 days of retirement with CONSIDERING status
   const retirementAlerts = mockDeals.filter((deal) => {
     if (deal.status !== 'CONSIDERING') return false;
@@ -170,10 +145,8 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">ダッシュボード</h1>
 
-      <GoogleCalendarPanel />
-
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-blue-500">
           <div className="text-gray-600 text-xs sm:text-sm font-medium mb-1 sm:mb-2">新規・面談待ち</div>
           <div className="text-2xl sm:text-3xl font-bold text-gray-900">{newAndInterviewedDeals}</div>
@@ -188,10 +161,6 @@ export default function DashboardPage() {
           <div className="text-gray-600 text-xs sm:text-sm font-medium mb-1 sm:mb-2">検討中</div>
           <div className="text-2xl sm:text-3xl font-bold text-gray-900">{consideringDeals}</div>
           <div className="text-gray-500 text-xs mt-1 sm:mt-2">件</div>
-        </div>
-        <div className="col-span-2 lg:col-span-1 bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-purple-500">
-          <div className="text-gray-600 text-xs sm:text-sm font-medium mb-1 sm:mb-2">今月の成約見込額</div>
-          <div className="text-lg sm:text-2xl font-bold text-gray-900">{formatCurrency(thisMonthContracted)}</div>
         </div>
       </div>
 

@@ -113,6 +113,32 @@ function formatFieldValue(key: EditableFieldKey, value: unknown): string {
   }
 }
 
+function formatAmountInput(value?: number): string {
+  return typeof value === 'number' ? value.toLocaleString('ja-JP') : '';
+}
+
+function parseAmountInput(value: string): number | undefined {
+  const digits = value.replace(/[^\d]/g, '');
+  return digits ? Number(digits) : undefined;
+}
+
+const FIELD_LABEL_CLASS = 'text-sm text-gray-600 mb-1';
+
+type FieldProps = {
+  field: EditableFieldKey;
+  children: React.ReactNode;
+  colSpan?: boolean;
+};
+
+function Field({ field, children, colSpan }: FieldProps) {
+  return (
+    <div className={colSpan ? 'sm:col-span-2' : ''}>
+      <p className={FIELD_LABEL_CLASS}>{FIELD_LABELS[field]}</p>
+      {children}
+    </div>
+  );
+}
+
 export default function DealDetailPage({ params }: DealDetailPageProps) {
   const { id } = use(params);
 
@@ -313,23 +339,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
   const inputCls =
     'w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm';
-  const labelCls = 'text-sm text-gray-600 mb-1';
-
-  // ========== 表示/編集 切替コンポーネント ==========
-  const Field = ({
-    field,
-    children,
-    colSpan,
-  }: {
-    field: EditableFieldKey;
-    children: React.ReactNode;
-    colSpan?: boolean;
-  }) => (
-    <div className={colSpan ? 'sm:col-span-2' : ''}>
-      <p className={labelCls}>{FIELD_LABELS[field]}</p>
-      {children}
-    </div>
-  );
 
   return (
     <div className="space-y-6">
@@ -578,12 +587,12 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
           <Field field="amount">
             {editing ? (
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 className={inputCls}
-                value={draft.amount ?? ''}
-                onChange={(e) =>
-                  updateDraft('amount', e.target.value === '' ? undefined : Number(e.target.value))
-                }
+                value={formatAmountInput(draft.amount)}
+                onChange={(e) => updateDraft('amount', parseAmountInput(e.target.value))}
+                placeholder="330000"
               />
             ) : (
               <p className="text-gray-900 font-medium">{formatCurrency(deal.amount)}</p>

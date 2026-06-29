@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import {
   mockDeals,
   mockPlans,
-  formatCurrency,
-  type Deal,
 } from '@/lib/mock-data';
+
+function normalizeAmountInput(value: string): string {
+  return value.replace(/[^\d]/g, '');
+}
 
 interface ContractDetailPageProps {
   params: Promise<{
@@ -101,11 +103,12 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
             <div className="relative">
               <span className="absolute left-4 top-2 text-gray-600">¥</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => setAmount(normalizeAmountInput(e.target.value))}
                 className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="金額を入力"
+                placeholder="330000"
               />
             </div>
           </div>

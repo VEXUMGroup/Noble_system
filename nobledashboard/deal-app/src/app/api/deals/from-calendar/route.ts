@@ -8,6 +8,7 @@ import {
   type ICalEvent,
 } from '@/lib/ical';
 import { validateCalendarDealInput } from '@/lib/calendar-deal-validation';
+import { nullIfEmpty, stripCustomDataColumn, writeDealWithCustomDataFallback } from '@/lib/deal-write';
 
 function buildDealId(): string {
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -17,7 +18,7 @@ function buildDealId(): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = readAppSessionCookie();
+    const session = await readAppSessionCookie();
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
     const body = (await request.json().catch(() => null)) as {
@@ -157,12 +158,25 @@ export async function POST(request: NextRequest) {
     const retirementDate = validation.normalized.retirement_date;
     const customerName = validation.normalized.customer_name;
     const dealDate = validation.normalized.deal_date;
+    const email = validation.normalized.email || undefined;
+    const phone = validation.normalized.phone || undefined;
 
-    if (autoRegister && !sourceCode) {
+    // 退職前サポートの自動登録は、後から編集できる項目（年齢・メールアドレス）を
+    // 厳密な必須条件にしない。ここで弾くと、タイトル表示だけで来るイベントが
+    // 自動登録できずに失敗扱いになってしまう。
+    const blockingErrors = Object.fromEntries(
+      Object.entries(validation.errors).filter(([field]) => {
+        if (!autoRegister) return true;
+        return field !== 'age' && field !== 'email';
+      })
+    );
+
+    if (Object.keys(blockingErrors).length > 0) {
       return NextResponse.json(
         {
-          error: 'source_not_configured',
-          message: '自動登録に必要な流入経路が設定されていません',
+          error: 'validation_failed',
+          message: '入力内容を確認してください',
+          field_errors: blockingErrors,
         },
         { status: 400 }
       );
@@ -193,17 +207,19 @@ export async function POST(request: NextRequest) {
       deal_date: dealDate,
       deal_notes: draft.deal_notes,
       source: sourceCode,
+      age: validation.normalized.age || null,
       agency_code: agencyCode,
       status: 'NEW',
-      retirement_date: retirementDate,
+      retirement_date: nullIfEmpty(retirementDate),
       calendar_event_id: draft.calendar_event_id,
+      email,
       custom_data: {
         ...(body?.custom_data ?? {}),
         age: validation.normalized.age ? Number(String(validation.normalized.age).replace(/[^\d]/g, '')) || validation.normalized.age : undefined,
         email: validation.normalized.email || undefined,
         phone: validation.normalized.phone || undefined,
       },
-      phone: validation.normalized.phone || undefined,
+      phone,
       created_by: session.userId,
       updated_by: session.userId,
     };
@@ -219,7 +235,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const { error } = await supabase.from('deals').insert(payload);
+    const { error } = await writeDealWithCustomDataFallback(
+      'deals/from-calendar insert',
+      async () => await supabase.from('deals').insert(payload),
+      async () => await supabase.from('deals').insert(stripCustomDataColumn(payload))
+    );
     if (error) {
       if (error.code === '23505') {
         return NextResponse.json({ error: 'already_registered', message: '既に商談化済みです' }, { status: 409 });
