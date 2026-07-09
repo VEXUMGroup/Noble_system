@@ -26,8 +26,9 @@ export async function GET() {
     }
 
     const events = await fetchICalEvents(data.ical_url, 7);
+    const specialEvents = events.filter((ev) => isSpecialCalendarEvent(ev.summary));
     // GoogleCalendarPanel が期待する shape に合わせる
-    const items = events.map((ev) => ({
+    const items = specialEvents.map((ev) => ({
       id: ev.id,
       summary: ev.summary,
       start: { dateTime: ev.start.toISOString() },

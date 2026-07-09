@@ -7,7 +7,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useMasterData } from '@/lib/useMasterData';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
 import { validateDealProgressInput } from '@/lib/deal-progress-validation';
-import { nullIfEmpty, stripCustomDataColumn, writeDealWithCustomDataFallback } from '@/lib/deal-write';
+import { nullIfEmpty, writeDealWithMissingColumnFallback } from '@/lib/deal-write';
 
 interface FormData {
   customer_name: string;
@@ -122,10 +122,10 @@ export default function NewDealPage() {
     };
 
     const supabase = createSupabaseBrowserClient();
-    const { error } = await writeDealWithCustomDataFallback(
+    const { error } = await writeDealWithMissingColumnFallback(
       'deals/new insert',
-      async () => await supabase.from('deals').insert(newDeal),
-      async () => await supabase.from('deals').insert(stripCustomDataColumn(newDeal))
+      newDeal,
+      async (payload) => await supabase.from('deals').insert(payload)
     );
     if (error) {
       setErrors((prev) => ({ ...prev, customer_name: error.message }));

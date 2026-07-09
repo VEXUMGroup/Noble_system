@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { PwaRegistration } from '@/components/pwa/PwaRegistration';
 import { UserProvider } from '@/lib/user-context';
 
 type AuthenticatedShellProps = {
@@ -22,6 +23,7 @@ export function AuthenticatedShell({
 
   return (
     <UserProvider currentUser={currentUser}>
+      <PwaRegistration />
       <div className="flex min-h-screen bg-gray-50">
         <Sidebar
           currentUser={currentUser}

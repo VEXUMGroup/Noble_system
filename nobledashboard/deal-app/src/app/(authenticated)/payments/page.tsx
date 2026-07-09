@@ -1,11 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import {
-  STATUS_CONFIG,
-  type DealStatus,
-} from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/format';
+import { getDaysUntilYmd } from '@/lib/date-utils';
+import { PaymentReminderSetup } from '@/components/notifications/PaymentReminderSetup';
 import { useDeals } from '@/lib/useDeals';
 import { useMasterData } from '@/lib/useMasterData';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -134,6 +132,13 @@ export default function PaymentsPage() {
     });
 
     return Array.from(commissionMap.values()).filter((c) => c.amount > 0);
+  }, [paymentDeals]);
+
+  const dueReminderDeals = useMemo(() => {
+    return paymentDeals.filter((pd) => {
+      const deadline = typeof pd.deal.payment_deadline === 'string' ? pd.deal.payment_deadline : '';
+      return pd.paid === 0 && getDaysUntilYmd(deadline) === 3;
+    });
   }, [paymentDeals]);
 
   const handleOpenPaymentModal = (paymentDeal: PaymentDealInfo) => {
@@ -587,15 +592,60 @@ export default function PaymentsPage() {
       )}
 
       {/* 通知設定 */}
-      <div className="bg-yellow-50 rounded-xl shadow-sm p-4 sm:p-6">
-        <h2 className="text-base font-bold text-gray-900 mb-3">通知設定</h2>
-        <div className="text-sm text-gray-700 space-y-1">
-          <p>会計日3日前: 支払期日の3日前にダッシュボード通知 + LINE連携でリマインド</p>
-          <p>未入金リマインド: 未入金の利用者へダッシュボード通知 → LINEでリマインド連携</p>
-          <p>代理店コミッション発生通知: 支払総額50%到達時に管理者へポップアップ通知</p>
-          <p>分割払い対応: 3回払い・4回払い等の分割払いスケジュール管理</p>
+      <div className="space-y-4">
+        <PaymentReminderSetup />
+
+        <div className="bg-yellow-50 rounded-xl shadow-sm p-4 sm:p-6">
+          <h2 className="text-base font-bold text-gray-900 mb-3">通知設定</h2>
+          <div className="text-sm text-gray-700 space-y-1">
+            <p>支払期日3日前: 未入金の顧客をスマホのシステム通知でお知らせします。</p>
+            <p>通知条件: 支払期日がちょうど3日後で、入金履歴がまだ 0 件の案件のみ対象です。</p>
+            <p>iPhone: ホーム画面に追加した Web アプリで通知を受け取れます。</p>
+            <p>代理店コミッション発生通知: 支払総額50%到達時に管理者へ通知します。</p>
+          </div>
         </div>
       </div>
+
+      {dueReminderDeals.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-red-100">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">3日後に通知する未入金顧客</h2>
+              <p className="text-xs text-gray-500 mt-1">支払期日3日前かつ未入金の顧客だけを対象にしています。</p>
+            </div>
+            <span className="inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+              {dueReminderDeals.length}件
+            </span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {dueReminderDeals.map((pd) => (
+              <div key={pd.deal.id} className="rounded-lg border border-red-200 bg-red-50 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-gray-900">{pd.deal.customer_name}</p>
+                    <p className="text-xs text-gray-500 mt-1">入金期日: {formatDate(pd.deal.payment_deadline)}</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-red-700">
+                    未入金
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                  <div>
+                    <span className="text-gray-400">成約金額</span>
+                    <br />
+                    <span className="font-semibold text-gray-900">{formatCurrency(pd.deal.amount)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400">未払い</span>
+                    <br />
+                    <span className="font-semibold text-red-600">{formatCurrency(pd.unpaid)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

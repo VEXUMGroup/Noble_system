@@ -12,6 +12,48 @@ export interface DealFilters {
   assigned_to?: string;
 }
 
+function resolveDealAgeValue(...values: unknown[]): string {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function syncAgeIntoCustomData(customData: unknown, age: string | null | undefined): Record<string, unknown> | undefined {
+  if (customData && (typeof customData !== 'object' || Array.isArray(customData))) {
+    return undefined;
+  }
+
+  const nextCustomData = customData ? { ...(customData as Record<string, unknown>) } : {};
+
+  if (age && age.trim()) {
+    nextCustomData.age = age;
+  } else {
+    delete nextCustomData.age;
+  }
+
+  return Object.keys(nextCustomData).length > 0 ? nextCustomData : undefined;
+}
+
+function normalizeDealAge<T extends Record<string, unknown> | null>(deal: T): T {
+  if (!deal) return deal;
+  const customData = deal.custom_data;
+  const customAge =
+    customData && typeof customData === 'object' && !Array.isArray(customData)
+      ? (customData as Record<string, unknown>).age
+      : undefined;
+  const age = resolveDealAgeValue(customAge, deal.age);
+  if (!age) return deal;
+
+  return {
+    ...deal,
+    age,
+    custom_data: syncAgeIntoCustomData(customData, age),
+  } as T;
+}
+
 // ========== 読み取り ==========
 
 export async function getDeals(filters?: DealFilters) {
@@ -57,7 +99,8 @@ export async function getDeal(id: string): Promise<Deal | null> {
 
     // 履歴もセットで返す
     const history = await getDealHistory(id);
-    return { ...(data as Deal), status_history: history };
+    const normalizedDeal = normalizeDealAge(data as unknown as Record<string, unknown> | null) as unknown as Deal;
+    return { ...normalizedDeal, status_history: history };
   } catch (error) {
     console.error('Error in getDeal:', error);
     return null;
@@ -106,11 +149,19 @@ export async function updateDeal(
     void created_at;
     void updated_at;
 
-    const payload = {
+    const normalizedAge = resolveDealAgeValue(rest.age, (rest.custom_data as Record<string, unknown> | undefined)?.age);
+    const payload: Record<string, unknown> = {
       ...rest,
       updated_at: new Date().toISOString(),
       updated_by: updatedBy,
     };
+    if (normalizedAge) {
+      payload.age = normalizedAge;
+      payload.custom_data = syncAgeIntoCustomData(rest.custom_data, normalizedAge);
+    } else if ('age' in rest) {
+      payload.age = null;
+      payload.custom_data = syncAgeIntoCustomData(rest.custom_data, null);
+    }
 
     const { data, error } = await supabase
       .from('deals')

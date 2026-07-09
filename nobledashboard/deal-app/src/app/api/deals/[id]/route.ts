@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readAppSessionCookie } from '@/lib/auth/app-session';
-import { stripCustomDataColumn, writeDealWithCustomDataFallback } from '@/lib/deal-write';
+import { writeDealWithMissingColumnFallback } from '@/lib/deal-write';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export async function DELETE(
@@ -49,6 +49,7 @@ const UPDATEABLE_FIELDS = new Set([
   'lost_reason_comment',
   'contract_plan',
   'contract_plan_other',
+  'amount',
   'payment_plan',
   'payment_method',
   'payment_deadline',
@@ -63,6 +64,23 @@ const UPDATEABLE_FIELDS = new Set([
 ]);
 
 const NULLABLE_DATE_FIELDS = new Set(['retirement_date', 'next_action_date', 'payment_deadline', 'contract_date']);
+
+function isMissingColumnError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const { code, message, details } = error as { code?: string; message?: string; details?: string };
+  const haystack = `${code ?? ''} ${message ?? ''} ${details ?? ''}`.toLowerCase();
+  return code === '42703' || code === 'PGRST204' || haystack.includes('could not find') || haystack.includes('does not exist');
+}
+
+async function hasDealColumn(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  column: 'age' | 'custom_data'
+) {
+  const { error } = await supabase.from('deals').select(column).limit(1);
+  if (!error) return true;
+  if (isMissingColumnError(error)) return false;
+  throw error;
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -88,15 +106,37 @@ export async function PATCH(
     Object.entries(rawPatch).filter(([key]) => UPDATEABLE_FIELDS.has(key))
   ) as Record<string, unknown>;
 
-  if ('custom_data' in patch && patch.custom_data && typeof patch.custom_data === 'object' && !Array.isArray(patch.custom_data)) {
-    const customData = patch.custom_data as Record<string, unknown>;
-    if (!('age' in patch) && 'age' in customData) {
-      patch.age = customData.age;
-    }
+  const hasCustomData = 'custom_data' in patch && patch.custom_data && typeof patch.custom_data === 'object' && !Array.isArray(patch.custom_data);
+  const customData = hasCustomData ? ({ ...(patch.custom_data as Record<string, unknown>) }) : undefined;
+
+  if (customData && !('age' in patch) && 'age' in customData) {
+    patch.age = customData.age;
   }
 
   if ('age' in patch && typeof patch.age === 'string' && patch.age.trim() === '') {
     patch.age = null;
+  }
+
+  const normalizedAge =
+    typeof patch.age === 'string' && patch.age.trim().length > 0
+      ? patch.age.trim()
+      : typeof patch.age === 'number' && Number.isFinite(patch.age)
+      ? String(patch.age)
+      : null;
+
+  if (normalizedAge !== null) {
+    patch.age = normalizedAge;
+  }
+
+  if (customData) {
+    if (normalizedAge !== null) {
+      customData.age = normalizedAge;
+    } else {
+      delete customData.age;
+    }
+    patch.custom_data = customData;
+  } else if ('age' in patch) {
+    patch.custom_data = normalizedAge !== null ? { age: normalizedAge } : {};
   }
 
   for (const key of Array.from(NULLABLE_DATE_FIELDS)) {
@@ -113,19 +153,43 @@ export async function PATCH(
   patch.updated_by = session.userId;
 
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await writeDealWithCustomDataFallback(
+
+  const requiresAgePersistence = 'age' in patch || (customData && 'age' in customData);
+  if (requiresAgePersistence) {
+    try {
+      const [hasAgeColumn, hasCustomDataColumn] = await Promise.all([
+        hasDealColumn(supabase, 'age'),
+        hasDealColumn(supabase, 'custom_data'),
+      ]);
+
+      if (!hasAgeColumn && !hasCustomDataColumn) {
+        return NextResponse.json(
+          {
+            error: 'schema_migration_required',
+            message:
+              '年齢の保存先がDBにありません。supabase/migrations/20260709_ensure_deal_age_storage.sql を適用してください。',
+          },
+          { status: 500 }
+        );
+      }
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error: 'schema_check_failed',
+          message: error instanceof Error ? error.message : '年齢保存先の確認に失敗しました',
+        },
+        { status: 500 }
+      );
+    }
+  }
+
+  const { data, error } = await writeDealWithMissingColumnFallback(
     'api/deals/[id] PATCH',
-    async () =>
+    patch,
+    async (writePatch) =>
       await supabase
         .from('deals')
-        .update(patch)
-        .eq('id', dealId)
-        .select('*')
-        .single(),
-    async () =>
-      await supabase
-        .from('deals')
-        .update(stripCustomDataColumn(patch))
+        .update(writePatch)
         .eq('id', dealId)
         .select('*')
         .single()

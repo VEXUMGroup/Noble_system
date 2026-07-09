@@ -32,6 +32,35 @@ export interface PaymentRecord {
   updated_at?: string;
 }
 
+function resolveDealAgeValue(...values: unknown[]): string {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function normalizeDealAge<T extends Record<string, unknown> | null>(deal: T): T {
+  if (!deal) return deal;
+  const customData = deal.custom_data;
+  const customAge =
+    customData && typeof customData === 'object' && !Array.isArray(customData)
+      ? (customData as Record<string, unknown>).age
+      : undefined;
+  const age = resolveDealAgeValue(customAge, deal.age);
+  if (!age) return deal;
+
+  return {
+    ...deal,
+    age: deal.age ?? age,
+    custom_data:
+      customData && typeof customData === 'object' && !Array.isArray(customData)
+        ? { ...(customData as Record<string, unknown>), age }
+        : { age },
+  } as T;
+}
+
 export async function getDeals(filters?: DealFilters) {
   try {
     const supabase = getSupabaseBrowserClient();
@@ -49,7 +78,7 @@ export async function getDeals(filters?: DealFilters) {
       console.error('Error fetching deals:', error);
       return [];
     }
-    return data || [];
+    return (data || []).map((deal) => normalizeDealAge(deal as Record<string, unknown>));
   } catch (error) {
     console.error('Error in getDeals:', error);
     return [];
@@ -68,7 +97,7 @@ export async function getDeal(id: string) {
       console.error('Error fetching deal:', error);
       return null;
     }
-    return data;
+    return normalizeDealAge(data as Record<string, unknown> | null);
   } catch (error) {
     console.error('Error in getDeal:', error);
     return null;

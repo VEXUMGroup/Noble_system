@@ -19,6 +19,7 @@ import {
 import { useMasterData } from '@/lib/useMasterData';
 import { getDeal } from '@/lib/supabase';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
+import { resolveDealAgeValue } from '@/lib/deal-age';
 import { validateCustomDataOrThrow, type DealCustomFieldDefinition } from '@/lib/custom-fields';
 import { updateDealById } from '@/lib/deals-api';
 import {
@@ -50,9 +51,9 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(sortForStableStringify(value));
 }
 
-function normalizeAgeValue(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  return String(value).trim();
+function getDealAgeValue(deal: Record<string, any> | null | undefined): string {
+  if (!deal) return '';
+  return resolveDealAgeValue(deal.custom_data?.age, deal.age);
 }
 
 export default function DealDetailPage({ params }: DealDetailPageProps) {
@@ -116,6 +117,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const [successMessage, setSuccessMessage] = useState('');
   const [customerSaveError, setCustomerSaveError] = useState('');
   const [isCustomerSaving, setIsCustomerSaving] = useState(false);
+  const successToastTimerRef = useRef<number | null>(null);
 
   // ── 顧客詳細編集フォームの状態
   // 詳細画面をそのまま編集フォームとして使うため、初期表示から編集モードにする。
@@ -167,7 +169,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       source,
       email,
       referrer: editAgencyCode,
-      age: normalizeAgeValue(editAgeRef.current?.value ?? editCustomData?.age),
+      age: resolveDealAgeValue(editAgeRef.current?.value, editCustomData?.age),
     };
   };
 
@@ -176,7 +178,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       {
         assigned_to: deal?.assigned_to ?? '',
         deal_date: deal?.deal_date ?? '',
-        age: normalizeAgeValue(deal?.custom_data?.age ?? deal?.age),
+        age: getDealAgeValue(deal),
         email: deal?.email ?? deal?.custom_data?.email ?? '',
         source: normalizeSourceValue(deal?.source),
         referrer: deal?.agency_code ?? deal?.referrer ?? '',
@@ -207,7 +209,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     const liveValues = getLiveEditValues();
     const normalizedSource = normalizeSourceValue(liveValues.source);
     const normalizedReferrer = liveValues.referrer || null;
-    const normalizedAge = normalizeAgeValue(editAgeRef.current?.value ?? editCustomData?.age);
+    const normalizedAge = resolveDealAgeValue(editAgeRef.current?.value, editCustomData?.age);
     const normalizedEmail = liveValues.email.trim();
     const normalizedPhone = editPhone.trim();
     return {
@@ -241,7 +243,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       deal_date: deal?.deal_date ?? '',
       retirement_date: deal?.retirement_date ?? '',
       source: normalizeSourceValue(deal?.source),
-      age: normalizeAgeValue(deal?.custom_data?.age ?? deal?.age) || '',
+      age: getDealAgeValue(deal) || '',
       agency_code: deal?.agency_code ?? deal?.referrer ?? '',
       result_status: deal?.result_status ?? '',
       email: deal?.email ?? deal?.custom_data?.email ?? '',
@@ -251,7 +253,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       memo: deal?.memo ?? '',
       custom_data: {
         ...(deal?.custom_data ?? {}),
-        age: normalizeAgeValue(deal?.custom_data?.age ?? deal?.age) || undefined,
+        age: getDealAgeValue(deal) || undefined,
         email: deal?.email ?? deal?.custom_data?.email ?? undefined,
         phone: deal?.phone ?? deal?.custom_data?.phone ?? undefined,
       },
@@ -264,7 +266,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       deal_date: getLiveEditValues().deal_date,
       retirement_date: editRetirementDate || '',
       source: normalizeSourceValue(getLiveEditValues().source),
-      age: normalizeAgeValue(editCustomData?.age) || '',
+      age: getLiveEditValues().age || '',
       agency_code: getLiveEditValues().referrer || '',
       result_status: editResultStatus || '',
       email: getLiveEditValues().email.trim(),
@@ -274,7 +276,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       memo: editMemo || '',
       custom_data: {
         ...(editCustomData ?? {}),
-        age: normalizeAgeValue(editCustomData?.age) || undefined,
+        age: getLiveEditValues().age || undefined,
         email: editEmail.trim() || undefined,
         phone: editPhone.trim() || undefined,
       },
@@ -295,7 +297,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     if (customerFormHydratedDealIdRef.current === deal.id) return;
     customerFormHydratedDealIdRef.current = deal.id;
 
-    const resolvedAge = normalizeAgeValue(deal.custom_data?.age ?? deal.age);
+    const resolvedAge = getDealAgeValue(deal);
     setEditCustomerName(deal.customer_name ?? '');
     setEditAssignedTo(deal.assigned_to ?? '');
     setEditDealDate(deal.deal_date ?? '');
@@ -315,6 +317,21 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     lastSavedCustomerSnapshotRef.current = getPersistedCustomerSnapshot();
     setIsCustomerFormReady(true);
   }, [deal]);
+
+  useEffect(() => {
+    if (!deal || !isCustomerFormReady) return;
+    const resolvedAge = getDealAgeValue(deal);
+    if (!resolvedAge) return;
+
+    setEditCustomData((prev) => {
+      const currentAge = resolveDealAgeValue(prev?.age);
+      if (currentAge) return prev;
+      return {
+        ...(prev ?? {}),
+        age: resolvedAge,
+      };
+    });
+  }, [deal?.age, deal?.custom_data?.age, isCustomerFormReady]);
 
   useEffect(() => {
     isCustomerFormReadyRef.current = isCustomerFormReady;
@@ -344,6 +361,18 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     }
   }, [currentDealProgressValidation.isValid, transitionError]);
 
+  function triggerSuccessToast(message: string) {
+    setSuccessMessage(message);
+    setShowSuccess(true);
+    if (successToastTimerRef.current !== null) {
+      window.clearTimeout(successToastTimerRef.current);
+    }
+    successToastTimerRef.current = window.setTimeout(() => {
+      setShowSuccess(false);
+      successToastTimerRef.current = null;
+    }, 2500);
+  }
+
   const persistCustomerChanges = async (options: { silent?: boolean } = {}) => {
     if (!deal) return false;
 
@@ -351,23 +380,35 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     if (snapshotBeforeSave === lastSavedCustomerSnapshotRef.current) {
       return true;
     }
-    if (customerSavePromiseRef.current) {
-      return customerSavePromiseRef.current;
-    }
 
-    if (!options.silent) {
-      setCustomerSaveError('');
-    }
-
-    setIsCustomerSaving(true);
     try {
       validateCustomDataOrThrow(customFieldDefs, editCustomData ?? {});
     } catch (e) {
       if (!options.silent) {
         setCustomerSaveError(e instanceof Error ? e.message : 'カスタム項目の入力が不正です');
       }
-      setIsCustomerSaving(false);
       return false;
+    }
+
+    if (!options.silent) {
+      setCustomerSaveError('');
+    }
+
+    if (customerSavePromiseRef.current) {
+      if (!options.silent) {
+        setIsCustomerSaving(true);
+      }
+      try {
+        return await customerSavePromiseRef.current;
+      } finally {
+        if (!options.silent) {
+          setIsCustomerSaving(false);
+        }
+      }
+    }
+
+    if (!options.silent) {
+      setIsCustomerSaving(true);
     }
 
     const savePromise = (async () => {
@@ -383,9 +424,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         setInterviewError('');
         if (!options.silent) {
           setCustomerSaveError('');
-          setSuccessMessage('顧客詳細を保存しました');
-          setShowSuccess(true);
-          setTimeout(() => setShowSuccess(false), 2500);
+          triggerSuccessToast('顧客詳細を保存しました');
         }
         return true;
       } catch (error) {
@@ -407,7 +446,9 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       if (customerSavePromiseRef.current === savePromise) {
         customerSavePromiseRef.current = null;
       }
-      setIsCustomerSaving(false);
+      if (!options.silent) {
+        setIsCustomerSaving(false);
+      }
     }
   };
 
@@ -436,6 +477,9 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     return () => {
       if (customerSaveTimerRef.current !== null) {
         window.clearTimeout(customerSaveTimerRef.current);
+      }
+      if (successToastTimerRef.current !== null) {
+        window.clearTimeout(successToastTimerRef.current);
       }
       if (isCustomerFormReadyRef.current && dealRef.current) {
         void persistCustomerChangesRef.current?.({ silent: true });
@@ -496,9 +540,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       setDeal((prev) => (prev ? { ...prev, ...updated } : prev));
       setDealStatus(newStatus);
       setInterviewError('');
-      setSuccessMessage(`面談記録「${selectedInterviewStatus?.name ?? statusValue}」を保存しました`);
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 2500);
+      triggerSuccessToast(`面談記録「${selectedInterviewStatus?.name ?? statusValue}」を保存しました`);
       setTimeout(() => {
         document.getElementById('result-entry-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
@@ -557,13 +599,10 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       setDeal((prev) => (prev ? { ...prev, ...updated } : prev));
       setDealStatus(mappedStatus);
       setResultError('');
-      setSuccessMessage(`結果「${selectedResultStatus?.name ?? statusValue}」を保存しました`);
-      setShowSuccess(true);
+      triggerSuccessToast(`結果「${selectedResultStatus?.name ?? statusValue}」を保存しました`);
 
       if (statusValue === 'RS_CONTRACT' || statusValue === 'CONTRACTED') {
         setTimeout(() => router.push(`/deals/${deal.id}/contract-detail`), 1200);
-      } else {
-        setTimeout(() => setShowSuccess(false), 2500);
       }
     } catch (error) {
       setResultError(error instanceof Error ? error.message : '保存に失敗しました');
@@ -577,7 +616,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
   // ── 編集キャンセル（元の値に戻す）
   const handleCancelEdit = () => {
-    const resolvedAge = normalizeAgeValue(deal.custom_data?.age ?? deal.age);
+    const resolvedAge = getDealAgeValue(deal);
     setEditCustomerName(deal.customer_name);
     setEditAssignedTo(deal.assigned_to);
     setEditDealDate(deal.deal_date);
@@ -939,7 +978,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
               ['担当 *', users.find((u) => u.id === deal.assigned_to)?.name ?? deal.assigned_to ?? '-'],
               ['結果ステータス', deal.result_status ?? '-'],
               ['商談日 *', deal.deal_date ? formatDate(deal.deal_date) : '-'],
-              ['年齢 *', normalizeAgeValue(deal.custom_data?.age ?? deal.age) || '-'],
+              ['年齢 *', getDealAgeValue(deal) || '-'],
               ['メールアドレス *', deal.email ?? deal.custom_data?.email ?? '-'],
               ['電話番号', deal.phone ?? deal.custom_data?.phone ?? '-'],
               ['見込み顧客', deal.prospect_level ?? '-'],

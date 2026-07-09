@@ -42,6 +42,7 @@ type EditableFieldKey =
   | 'assigned_to'
   | 'deal_month'
   | 'deal_date'
+  | 'age'
   | 'source'
   | 'retirement_date'
   | 'referrer'
@@ -66,6 +67,7 @@ const FIELD_LABELS: Record<EditableFieldKey, string> = {
   assigned_to: '担当',
   deal_month: '商談月',
   deal_date: '商談日',
+  age: '年齢',
   source: '流入経路',
   retirement_date: '退職予定日',
   referrer: '紹介者',
@@ -115,6 +117,24 @@ function formatFieldValue(key: EditableFieldKey, value: unknown): string {
 
 function formatAmountInput(value?: number): string {
   return typeof value === 'number' ? value.toLocaleString('ja-JP') : '';
+}
+
+function resolveDealAgeValue(...values: unknown[]): string {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function getDealAgeValue(deal: Record<string, any> | null | undefined): string {
+  if (!deal) return '';
+  return resolveDealAgeValue(deal.age, deal.custom_data?.age);
+}
+
+function getEditableAgeValue(draftAge: unknown, deal: Record<string, any> | null | undefined): string {
+  return resolveDealAgeValue(draftAge) || getDealAgeValue(deal);
 }
 
 function parseAmountInput(value: string): number | undefined {
@@ -447,6 +467,21 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
               />
             ) : (
               <p className="text-gray-900 font-medium">{formatDate(deal.deal_date)}</p>
+            )}
+          </Field>
+
+          <Field field="age">
+            {editing ? (
+              <input
+                type="text"
+                inputMode="numeric"
+                className={inputCls}
+                value={getEditableAgeValue(draft.age, deal)}
+                onChange={(e) => updateDraft('age', e.target.value)}
+                placeholder="60"
+              />
+            ) : (
+              <p className="text-gray-900 font-medium">{getDealAgeValue(deal) || '-'}</p>
             )}
           </Field>
 

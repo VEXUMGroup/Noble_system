@@ -122,6 +122,9 @@ export const DealRegisterModal: React.FC<DealRegisterModalProps> = ({
       {
         sourceCodes: sources.map((s) => s.code),
         agencyCodes: agencies.map((a) => a.code),
+        requireSourceOrReferrer: false,
+        skipSourceCodeValidation: true,
+        skipAgencyCodeValidation: true,
       }
     );
 

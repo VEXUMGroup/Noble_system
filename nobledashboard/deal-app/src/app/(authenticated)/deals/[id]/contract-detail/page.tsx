@@ -1,16 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { paymentPlanOptions, paymentMethodOptions } from '@/lib/constants';
 import { useMasterData } from '@/lib/useMasterData';
 import { getDeal } from '@/lib/supabase';
 import { updateDealById } from '@/lib/deals-api';
 import { nullIfEmpty } from '@/lib/deal-write';
-import {
-  getDealProgressValidationMessage,
-  validateDealProgressInput,
-} from '@/lib/deal-progress-validation';
+import { formatCurrency } from '@/lib/format';
 
 interface ContractDetailPageProps {
   params: {
@@ -24,6 +21,8 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
   const [deal, setDeal] = useState<Record<string, any> | null>(null);
   const [dealLoading, setDealLoading] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('成約詳細を保存しました');
+  const redirectTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +46,8 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
   const [paymentPlan, setPaymentPlan] = useState('');
   // 支払い方法（銀行振込 / カード / Stripe）
   const [paymentMethod, setPaymentMethod] = useState('');
+  // 成約金額
+  const [contractAmount, setContractAmount] = useState('');
   // 支払い期限（自由記入）
   const [paymentDeadline, setPaymentDeadline] = useState('');
   // イレギュラー記載（支払い回数、入金者変更など）
@@ -58,21 +59,49 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
     if (!deal) return;
     setContractPlan(deal.contract_plan || '');
     setContractPlanOther(deal.contract_plan_other || '');
+    setContractAmount(
+      typeof deal.amount === 'number' && Number.isFinite(deal.amount)
+        ? String(deal.amount)
+        : typeof deal.amount === 'string'
+          ? deal.amount
+          : ''
+    );
     setPaymentPlan(deal.payment_plan || '');
     setPaymentMethod(deal.payment_method || '');
     setPaymentDeadline(typeof deal.payment_deadline === 'string' ? deal.payment_deadline : '');
     setIrregularNotes(deal.irregular_notes || '');
   }, [deal]);
 
-  const dealProgressValidation = validateDealProgressInput({
-    assigned_to: deal?.assigned_to ?? '',
-    deal_date: deal?.deal_date ?? '',
-    age: String(deal?.custom_data?.age ?? deal?.age ?? ''),
-    email: deal?.email ?? deal?.custom_data?.email ?? '',
-    source: deal?.source ?? '',
-    referrer: deal?.agency_code ?? deal?.referrer ?? '',
-  });
-  const dealProgressError = getDealProgressValidationMessage(dealProgressValidation);
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        window.clearTimeout(redirectTimerRef.current);
+      }
+    };
+  }, []);
+
+  const goToDealDetail = () => {
+    if (redirectTimerRef.current) {
+      window.clearTimeout(redirectTimerRef.current);
+      redirectTimerRef.current = null;
+    }
+    router.push(`/deals/${params.id}`);
+  };
+
+  const isContractDetailComplete =
+    !!contractPlan &&
+    (contractPlan !== 'その他' || !!contractPlanOther.trim()) &&
+    !!contractAmount.trim() &&
+    Number(contractAmount.replace(/,/g, '')) > 0 &&
+    !!paymentPlan &&
+    !!paymentMethod &&
+    !!paymentDeadline.trim();
+
+  const normalizedContractAmount = Number(contractAmount.replace(/,/g, ''));
+  const confirmedAmount =
+    Number.isFinite(normalizedContractAmount) && normalizedContractAmount > 0
+      ? Math.floor(normalizedContractAmount)
+      : null;
 
   if (dealLoading) {
     return (
@@ -99,18 +128,14 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
   }
 
   const handleConfirm = () => {
-    if (!dealProgressValidation.isValid) {
-      setErrorMessage(dealProgressError);
+    if (!isContractDetailComplete) {
+      setErrorMessage('必須項目をすべて入力してください（「その他」選択時はコメントが必須です）。');
       return;
     }
-    if (
-      !contractPlan ||
-      (contractPlan === 'その他' && !contractPlanOther.trim()) ||
-      !paymentPlan ||
-      !paymentMethod ||
-      !paymentDeadline.trim()
-    ) {
-      setErrorMessage('必須項目をすべて入力してください（「その他」選択時はコメントが必須です）。');
+
+    const amountValue = Number(contractAmount.replace(/,/g, ''));
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      setErrorMessage('料金は1円以上の数値で入力してください。');
       return;
     }
 
@@ -118,6 +143,7 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
       const payload = {
         contract_plan: contractPlan,
         contract_plan_other: contractPlan === 'その他' ? contractPlanOther : null,
+        amount: Math.floor(amountValue),
         payment_plan: paymentPlan,
         payment_method: paymentMethod,
         payment_deadline: nullIfEmpty(paymentDeadline),
@@ -132,10 +158,11 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
         }
         setDeal((prev) => (prev ? { ...prev, ...updated } : prev));
         setErrorMessage('');
+        setSuccessMessage('成約詳細を保存しました');
         setShowSuccess(true);
-        setTimeout(() => {
-          router.push(`/deals/${params.id}`);
-        }, 1500);
+        redirectTimerRef.current = window.setTimeout(() => {
+          goToDealDetail();
+        }, 1800);
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : '保存に失敗しました');
         return;
@@ -164,8 +191,32 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
       </div>
 
       {showSuccess && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <p className="text-green-800 font-medium">✓ 成約詳細を保存しました</p>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 px-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-live="polite"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-6 shadow-2xl shadow-emerald-100">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-2xl text-emerald-700">
+              ✓
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-gray-900">{successMessage}</p>
+              <p className="mt-2 text-sm leading-6 text-gray-600">
+                保存内容を反映しました。商談詳細画面へ戻ります。
+              </p>
+            </div>
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={goToDealDetail}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+              >
+                今すぐ戻る
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -175,17 +226,9 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
         </div>
       )}
 
-      {!dealProgressValidation.isValid && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-sm font-medium text-amber-900">次の工程に進めません</p>
-          <p className="text-sm text-amber-800 mt-1">{dealProgressError}</p>
-        </div>
-      )}
-
       {/* Form Card */}
       <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
         <form className="space-y-6">
-
           {/* 成約プラン */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -220,6 +263,46 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
                 />
               </div>
             )}
+          </div>
+
+          {/* 料金 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              料金 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              value={contractAmount}
+              onChange={(e) => {
+                setContractAmount(e.target.value);
+                setErrorMessage('');
+              }}
+              placeholder="例: 330000"
+              className={selectClass}
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              入力例: {formatCurrency(330000)}
+            </p>
+          </div>
+
+          {/* 確認欄 */}
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+            <p className="text-sm font-semibold text-blue-900 mb-2">入力内容の確認</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="rounded-lg bg-white/80 p-3">
+                <p className="text-xs text-gray-500 mb-1">保存先</p>
+                <p className="font-medium text-gray-900">deals.amount</p>
+              </div>
+              <div className="rounded-lg bg-white/80 p-3">
+                <p className="text-xs text-gray-500 mb-1">確認表示</p>
+                <p className="font-medium text-gray-900">
+                  {confirmedAmount ? formatCurrency(confirmedAmount) : '未入力'}
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* 支払いプラン */}
@@ -312,8 +395,8 @@ export default function ContractDetailPage({ params }: ContractDetailPageProps) 
             <button
               type="button"
               onClick={handleConfirm}
-              disabled={!dealProgressValidation.isValid}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
+              disabled={!isContractDetailComplete}
+              className="px-6 py-2 rounded-lg font-medium text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
             >
               確定して保存
             </button>

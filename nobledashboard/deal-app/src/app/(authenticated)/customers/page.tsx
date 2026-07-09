@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatDate } from '@/lib/format';
+import { resolveDealAgeValue } from '@/lib/deal-age';
 import { useMasterData } from '@/lib/useMasterData';
 import { useDeals } from '@/lib/useDeals';
 import { useCurrentUser } from '@/lib/useCurrentUser';
@@ -56,8 +57,7 @@ export default function CustomersPage() {
       const name: string = deal.customer_name ?? '（名前なし）';
       const existing = map.get(name);
       const custom = (deal.custom_data ?? {}) as Record<string, unknown>;
-      const ageValue = deal.age ?? custom.age;
-      const age = ageValue != null && ageValue !== '' ? String(ageValue) : '';
+      const age = resolveDealAgeValue(custom.age, deal.age);
       const email = custom.email != null && custom.email !== '' ? String(custom.email) : '';
       const phone = custom.phone != null && custom.phone !== '' ? String(custom.phone) : '';
 

@@ -17,6 +17,9 @@ export type CalendarDealErrors = Partial<Record<CalendarDealField, string>>;
 export type CalendarDealValidationOptions = {
   sourceCodes?: string[];
   agencyCodes?: string[];
+  requireSourceOrReferrer?: boolean;
+  skipSourceCodeValidation?: boolean;
+  skipAgencyCodeValidation?: boolean;
 };
 
 export type CalendarDealValidationResult = {
@@ -52,6 +55,9 @@ export function validateCalendarDealInput(
   const errors: CalendarDealErrors = {};
   const sourceCodes = options.sourceCodes ?? [];
   const agencyCodes = options.agencyCodes ?? [];
+  const requireSourceOrReferrer = options.requireSourceOrReferrer ?? true;
+  const skipSourceCodeValidation = options.skipSourceCodeValidation ?? false;
+  const skipAgencyCodeValidation = options.skipAgencyCodeValidation ?? false;
   const hasSource = normalized.source.length > 0;
   const hasReferrer = normalized.referrer.length > 0;
 
@@ -78,15 +84,15 @@ export function validateCalendarDealInput(
     errors.email = '必須項目です';
   }
 
-  if (!hasSource && !hasReferrer) {
+  if (requireSourceOrReferrer && !hasSource && !hasReferrer) {
     const message = '流入経路または紹介者のどちらか一方を入力してください';
     errors.source = message;
     errors.referrer = message;
   } else {
-    if (hasSource && sourceCodes.length > 0 && !sourceCodes.includes(normalized.source)) {
+    if (!skipSourceCodeValidation && hasSource && sourceCodes.length > 0 && !sourceCodes.includes(normalized.source)) {
       errors.source = '有効な流入経路を選択してください';
     }
-    if (hasReferrer && agencyCodes.length > 0 && !agencyCodes.includes(normalized.referrer)) {
+    if (!skipAgencyCodeValidation && hasReferrer && agencyCodes.length > 0 && !agencyCodes.includes(normalized.referrer)) {
       errors.referrer = '有効な紹介者を選択してください';
     }
   }

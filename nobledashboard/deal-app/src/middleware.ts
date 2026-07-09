@@ -36,47 +36,66 @@ function base64UrlDecode(input: string) {
 }
 
 async function readSessionFromCookie(request: NextRequest) {
-  const token = request.cookies.get(COOKIE_NAME)?.value;
-  const secret = getAuthSecret();
-  if (!token || !secret) return null;
-  const [encoded, signature] = token.split('.');
-  if (!encoded || !signature) return null;
-  if ((await signHex(secret, encoded)) !== signature) return null;
-  const decoded = base64UrlDecode(encoded);
-  const payload = JSON.parse(decoded) as { email?: string; userId?: string; exp?: number };
-  if (!payload?.email || !payload?.userId || typeof payload.exp !== 'number') return null;
-  if (Date.now() > payload.exp) return null;
-  return payload;
+  try {
+    const token = request.cookies.get(COOKIE_NAME)?.value;
+    const secret = getAuthSecret();
+    if (!token || !secret) return null;
+    const [encoded, signature] = token.split('.');
+    if (!encoded || !signature) return null;
+    if ((await signHex(secret, encoded)) !== signature) return null;
+    const decoded = base64UrlDecode(encoded);
+    const payload = JSON.parse(decoded) as { email?: string; userId?: string; exp?: number };
+    if (!payload?.email || !payload?.userId || typeof payload.exp !== 'number') return null;
+    if (Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function redirectToLogin(request: NextRequest, error?: string) {
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = '/';
+  loginUrl.search = '';
+  loginUrl.searchParams.set('next', request.nextUrl.pathname);
+  if (error) loginUrl.searchParams.set('error', error);
+  return NextResponse.redirect(loginUrl);
 }
 
 export async function middleware(request: NextRequest) {
-  const response = NextResponse.next();
+  try {
+    const response = NextResponse.next();
 
-  const session = await readSessionFromCookie(request);
-  if (!session) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = '/';
-    loginUrl.searchParams.set('next', request.nextUrl.pathname);
-    return NextResponse.redirect(loginUrl);
+    const session = await readSessionFromCookie(request);
+    if (!session) {
+      return redirectToLogin(request);
+    }
+
+    const supabase = createSupabaseAdminClient();
+    const { data: member, error } = await supabase
+      .from('m_users')
+      .select('id, is_active')
+      .eq('id', session.userId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[middleware] member lookup failed', {
+        message: error.message,
+        code: error.code,
+      });
+      return redirectToLogin(request, 'internal_error');
+    }
+
+    if (!member) {
+      return redirectToLogin(request, 'unauthorized_user');
+    }
+
+    return response;
+  } catch (error) {
+    console.error('[middleware] unexpected error', error);
+    return redirectToLogin(request, 'internal_error');
   }
-
-  const supabase = createSupabaseAdminClient();
-  const { data: member } = await supabase
-    .from('m_users')
-    .select('id, is_active')
-    .eq('id', session.userId)
-    .eq('is_active', true)
-    .maybeSingle();
-
-  if (!member) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = '/';
-    loginUrl.searchParams.set('error', 'unauthorized_user');
-    loginUrl.searchParams.set('next', request.nextUrl.pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  return response;
 }
 
 export const config = {

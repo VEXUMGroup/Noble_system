@@ -14,6 +14,7 @@ interface FormData {
   customer_name: string;
   assigned_to: string;
   deal_date: string;
+  age: string;
   deal_month: string;
   source: string;
   retirement_date: string;
@@ -29,6 +30,7 @@ export default function NewDealPage() {
     customer_name: '',
     assigned_to: '',
     deal_date: '',
+    age: '',
     deal_month: '',
     source: '',
     retirement_date: '',
@@ -77,6 +79,9 @@ export default function NewDealPage() {
     if (!formData.deal_date) {
       newErrors.deal_date = '必須項目です';
     }
+    if (!formData.age.trim()) {
+      newErrors.age = '必須項目です';
+    }
     if (!formData.source) {
       newErrors.source = '必須項目です';
     }
@@ -99,6 +104,7 @@ export default function NewDealPage() {
       assigned_to: formData.assigned_to,
       deal_date: formData.deal_date,
       deal_month: formData.deal_month,
+      age: formData.age,
       source: formData.source,
       interview_status: 'INTERVIEW_DONE' as InterviewStatus,
       status: 'NEW' as DealStatus,
@@ -198,9 +204,30 @@ export default function NewDealPage() {
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   errors.deal_date ? 'border-red-500' : 'border-gray-300'
                 }`}
-              />
+                />
               {errors.deal_date && (
                 <p className="text-red-500 text-sm mt-1">{errors.deal_date}</p>
+              )}
+            </div>
+
+            {/* 年齢 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                年齢 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                name="age"
+                value={formData.age}
+                onChange={handleChange}
+                placeholder="例: 60"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  errors.age ? 'border-red-500' : 'border-gray-300'
+                }`}
+              />
+              {errors.age && (
+                <p className="text-red-500 text-sm mt-1">{errors.age}</p>
               )}
             </div>
 

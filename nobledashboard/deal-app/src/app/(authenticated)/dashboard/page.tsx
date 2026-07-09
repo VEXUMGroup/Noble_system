@@ -87,6 +87,11 @@ const Info = ({ className }: { className?: string }) => (
   </svg>
 );
 
+function parseLocalDate(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   // 仕様書 5.8: ダッシュボードアクセス時にポップアップ自動表示
@@ -118,10 +123,15 @@ export default function DashboardPage() {
     return getDaysUntil(deal.retirement_date) <= 14;
   });
 
-  // Get recent 5 deals sorted by updated_at descending
-  const recentDeals = [...mockDeals].sort((a, b) => {
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-  }).slice(0, 5);
+  // Get retirements within the next 30 days sorted by retirement_date ascending
+  const upcomingRetirees = [...mockDeals]
+    .filter((deal) => {
+      const daysUntilRetirement = getDaysUntil(deal.retirement_date);
+      return Number.isFinite(daysUntilRetirement) && daysUntilRetirement >= 0 && daysUntilRetirement <= 30;
+    })
+    .sort((a, b) => {
+      return parseLocalDate(a.retirement_date).getTime() - parseLocalDate(b.retirement_date).getTime();
+    });
 
   // Get notifications
   const notifications = mockNotifications;
@@ -200,7 +210,10 @@ export default function DashboardPage() {
           {/* Recent Deals */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">最近の商談</h2>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">今後1ヶ月の退職予定</h2>
+                <p className="mt-1 text-xs sm:text-sm text-gray-500">退職日が今後30日以内の案件を表示しています。</p>
+              </div>
               <Link
                 href="/deals"
                 className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
@@ -211,22 +224,32 @@ export default function DashboardPage() {
 
             {/* モバイル: カード表示 */}
             <div className="sm:hidden space-y-2">
-              {recentDeals.map((deal) => (
-                <div
-                  key={deal.id}
-                  onClick={() => router.push(`/deals/${deal.id}`)}
-                  className="bg-white rounded-xl shadow-sm p-4 cursor-pointer active:bg-gray-50"
-                >
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <p className="font-semibold text-gray-900 text-sm">{deal.customer_name}</p>
-                    <StatusBadge status={deal.status} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-500 mt-1">
-                    <span>担当：{getUserName(deal.assigned_to)}</span>
-                    <span>商談日：{formatDate(deal.deal_date)}</span>
-                  </div>
+              {upcomingRetirees.length > 0 ? (
+                upcomingRetirees.map((deal) => {
+                  const daysUntilRetirement = getDaysUntil(deal.retirement_date);
+                  return (
+                    <div
+                      key={deal.id}
+                      onClick={() => router.push(`/deals/${deal.id}`)}
+                      className="bg-white rounded-xl shadow-sm p-4 cursor-pointer active:bg-gray-50"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p className="font-semibold text-gray-900 text-sm">{deal.customer_name}</p>
+                        <StatusBadge status={deal.status} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-500 mt-1">
+                        <span>担当：{getUserName(deal.assigned_to)}</span>
+                        <span>退職日：{formatDate(deal.retirement_date)}</span>
+                        <span className="col-span-2">退職まで{daysUntilRetirement}日</span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+                  今後30日以内の退職予定はありません。
                 </div>
-              ))}
+              )}
             </div>
 
             {/* デスクトップ: テーブル表示 */}
@@ -238,23 +261,31 @@ export default function DashboardPage() {
                     <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">顧客名</th>
                     <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">担当</th>
                     <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">ステータス</th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">商談日</th>
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs sm:text-sm font-semibold text-gray-900 whitespace-nowrap">退職日</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {recentDeals.map((deal) => (
-                    <tr
-                      key={deal.id}
-                      onClick={() => router.push(`/deals/${deal.id}`)}
-                      className="hover:bg-gray-50 transition cursor-pointer"
-                    >
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{deal.id}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-900">{deal.customer_name}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{getUserName(deal.assigned_to)}</td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm"><StatusBadge status={deal.status} /></td>
-                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{formatDate(deal.deal_date)}</td>
+                  {upcomingRetirees.length > 0 ? (
+                    upcomingRetirees.map((deal) => (
+                      <tr
+                        key={deal.id}
+                        onClick={() => router.push(`/deals/${deal.id}`)}
+                        className="hover:bg-gray-50 transition cursor-pointer"
+                      >
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium text-gray-900">{deal.id}</td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-900">{deal.customer_name}</td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{getUserName(deal.assigned_to)}</td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm"><StatusBadge status={deal.status} /></td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-700">{formatDate(deal.retirement_date)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-3 sm:px-6 py-6 text-center text-sm text-gray-500">
+                        今後30日以内の退職予定はありません。
+                      </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>

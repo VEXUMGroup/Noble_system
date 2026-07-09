@@ -16,6 +16,8 @@ export interface Deal {
   deal_month: string;          // YYYY/MM
   deal_date: string;
   customer_name: string;
+  age?: string;                // 年齢
+  custom_data?: Record<string, unknown>;
   prospect_level?: string;     // 見込みあり / 見込み低 / 新規 / 再商談
   source: string;              // 流入経路（エルステ経由）
   referrer?: string;           // 紹介者（代理店経由）
@@ -185,6 +187,7 @@ export const mockDeals: Deal[] = [
     deal_month: '2026/04',
     deal_date: '2026-04-01',
     customer_name: '山田太郎',
+    age: '60',
     prospect_level: '見込みあり',
     source: 'WEB_META',
     interview_status: 'INTERVIEW_DONE',
@@ -227,6 +230,7 @@ export const mockDeals: Deal[] = [
     deal_month: '2026/04',
     deal_date: '2026-04-05',
     customer_name: '鈴木花子',
+    age: '58',
     prospect_level: '見込みあり',
     source: 'REFERRAL',
     referrer: '浦川聖哉',
@@ -397,6 +401,7 @@ export const mockDeals: Deal[] = [
     deal_month: '2026/02',
     deal_date: '2026-02-10',
     customer_name: '川端真理',
+    age: '61',
     prospect_level: '見込みあり',
     source: 'DIRECT_LINE',
     interview_status: 'INTERVIEW_DONE',

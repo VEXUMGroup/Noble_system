@@ -10,6 +10,7 @@ const geistSans = localFont({
 export const metadata: Metadata = {
   title: '商談管理システム',
   description: '社会保険給付金サポート業務の商談管理システム',
+  manifest: '/manifest.webmanifest',
 };
 
 export default function RootLayout({

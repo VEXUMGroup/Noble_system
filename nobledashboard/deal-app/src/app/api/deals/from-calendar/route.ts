@@ -1,19 +1,122 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import { readAppSessionCookie } from '@/lib/auth/app-session';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import {
+  extractCalendarField,
   formatEventForDeal,
   isSpecialCalendarEvent,
   parseLStepCalendarDescription,
   type ICalEvent,
 } from '@/lib/ical';
 import { validateCalendarDealInput } from '@/lib/calendar-deal-validation';
-import { nullIfEmpty, stripCustomDataColumn, writeDealWithCustomDataFallback } from '@/lib/deal-write';
+import { extractMissingColumns, nullIfEmpty, writeDealWithMissingColumnFallback } from '@/lib/deal-write';
 
-function buildDealId(): string {
-  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const rand = String(Math.floor(Math.random() * 900) + 100);
-  return `D-${datePart}-${rand}`;
+function buildDealId(eventId: string): string {
+  const digest = createHash('sha256').update(eventId).digest('hex').slice(0, 16);
+  return `D-${digest}`;
+}
+
+async function resolveAssignedToId(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  session: { userId: string; email: string }
+): Promise<string | null> {
+  const directUserId = session.userId?.trim();
+  if (directUserId) {
+    const { data } = await supabase.from('m_users').select('id').eq('id', directUserId).maybeSingle();
+    if (data?.id) return data.id;
+  }
+
+  const normalizedEmail = session.email.trim();
+  if (normalizedEmail) {
+    const { data } = await supabase
+      .from('m_users')
+      .select('id')
+      .ilike('email', normalizedEmail)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (data?.id) return data.id;
+  }
+
+  return directUserId || null;
+}
+
+function resolveSourceCodeForAutoRegister(
+  bodySource: unknown,
+  sourceCodes: string[],
+  fallbackSourceCode: string | null
+): string | null {
+  if (typeof bodySource === 'string') {
+    const trimmed = bodySource.trim();
+    if (trimmed && sourceCodes.includes(trimmed)) {
+      return trimmed;
+    }
+  }
+
+  if (fallbackSourceCode) return fallbackSourceCode;
+
+  if (sourceCodes.length > 0) return sourceCodes[0];
+
+  return null;
+}
+
+type ExistingDealLookup = {
+  calendarEventId: string;
+  customerName: string;
+  dealDate: string;
+  dealNotes: string | null;
+  assignedToId: string;
+};
+
+async function findExistingCalendarDeal(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  lookup: ExistingDealLookup
+): Promise<{ id: string } | null> {
+  const exactResult = await supabase
+    .from('deals')
+    .select('id')
+    .eq('calendar_event_id', lookup.calendarEventId)
+    .limit(1);
+
+  if (exactResult.error) {
+    console.warn('[deals/from-calendar] exact duplicate lookup failed; continuing without it', exactResult.error);
+  } else if (exactResult.data?.[0]?.id) {
+    return exactResult.data[0];
+  }
+
+  // 旧スキーマや一部未反映の環境では、`calendar_event_id` や `deal_notes` が
+  // 存在しないことがある。その場合でも処理を止めず、利用できる列だけで
+  // 既存判定を行う。
+  const baseQuery = supabase
+    .from('deals')
+    .select('id')
+    .eq('assigned_to', lookup.assignedToId)
+    .eq('customer_name', lookup.customerName)
+    .eq('deal_date', lookup.dealDate);
+
+  const notesQuery = lookup.dealNotes
+    ? baseQuery.eq('deal_notes', lookup.dealNotes)
+    : baseQuery.is('deal_notes', null);
+  const notesResult = await notesQuery.limit(1);
+  if (!notesResult.error) {
+    return notesResult.data?.[0] ?? null;
+  }
+
+  const missingColumns = extractMissingColumns(notesResult.error);
+  if (missingColumns.some((column) => column === 'deal_notes')) {
+    const fallbackResult = await baseQuery.limit(1);
+    if (fallbackResult.error) {
+      console.warn('[deals/from-calendar] fallback duplicate lookup failed; continuing without it', fallbackResult.error);
+      return null;
+    }
+    return fallbackResult.data?.[0] ?? null;
+  }
+
+  if (missingColumns.includes('assigned_to') || missingColumns.includes('customer_name') || missingColumns.includes('deal_date')) {
+    return null;
+  }
+  console.warn('[deals/from-calendar] notes duplicate lookup failed; continuing without it', notesResult.error);
+  return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -28,8 +131,11 @@ export async function POST(request: NextRequest) {
       assigned_to?: string;
       deal_date?: string;
       source?: string;
+      source_codes?: string[];
       agency_code?: string;
+      agency_codes?: string[];
       auto_register?: boolean;
+      age?: string | number;
       custom_data?: Record<string, unknown> & {
         age?: string | number;
         email?: string;
@@ -59,7 +165,7 @@ export async function POST(request: NextRequest) {
     }
 
     const draft = formatEventForDeal(event);
-    const parsed = parseLStepCalendarDescription(event.description);
+    const parsed = parseLStepCalendarDescription([event.summary, event.description].filter(Boolean).join('\n'));
     const isSpecialEvent = isSpecialCalendarEvent(event.summary);
 
     const supabase = createSupabaseAdminClient();
@@ -68,10 +174,13 @@ export async function POST(request: NextRequest) {
       .from('m_sources')
       .select('code, name')
       .eq('is_active', true)
-      .order('sort_order', { ascending: true });
+      .order('name', { ascending: true });
     if (sourceError) {
-      console.error('[deals/from-calendar] source fetch error:', sourceError);
-      return NextResponse.json({ error: 'source_fetch_failed', message: sourceError.message }, { status: 500 });
+      if (!body?.auto_register && !isSpecialEvent) {
+        console.error('[deals/from-calendar] source fetch error:', sourceError);
+        return NextResponse.json({ error: 'source_fetch_failed', message: sourceError.message }, { status: 500 });
+      }
+      console.warn('[deals/from-calendar] source fetch failed in auto-register; continuing without source master', sourceError);
     }
 
     const { data: agencyRows, error: agencyError } = await supabase
@@ -80,24 +189,45 @@ export async function POST(request: NextRequest) {
       .eq('is_active', true)
       .order('name', { ascending: true });
     if (agencyError) {
-      console.error('[deals/from-calendar] agency fetch error:', agencyError);
-      return NextResponse.json({ error: 'agency_fetch_failed', message: agencyError.message }, { status: 500 });
+      if (!body?.auto_register && !isSpecialEvent) {
+        console.error('[deals/from-calendar] agency fetch error:', agencyError);
+        return NextResponse.json({ error: 'agency_fetch_failed', message: agencyError.message }, { status: 500 });
+      }
+      console.warn('[deals/from-calendar] agency fetch failed in auto-register; continuing without agency master', agencyError);
     }
 
-    const sourceCodes = (sourceRows ?? []).map((r) => r.code);
-    const agencyCodes = (agencyRows ?? []).map((r) => r.code);
+    const sourceCodes = Array.from(
+      new Set([
+        ...(sourceRows ?? []).map((r) => r.code),
+        ...((body?.source_codes ?? [])
+          .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+          .map((v) => v.trim())),
+      ])
+    );
+    const agencyCodes = Array.from(
+      new Set([
+        ...(agencyRows ?? []).map((r) => r.code),
+        ...((body?.agency_codes ?? [])
+          .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+          .map((v) => v.trim())),
+      ])
+    );
     const fallbackSourceCode =
       sourceRows?.find((row) => row.name === '流入経路なし' || row.name === '不明')?.code ??
+      body?.source_codes?.find((code) => typeof code === 'string' && code.trim())?.trim() ??
       sourceRows?.[0]?.code ??
       null;
     const autoRegister = body?.auto_register === true || isSpecialEvent;
+    const resolvedAssignedToId = await resolveAssignedToId(supabase, session);
+    if (!resolvedAssignedToId) {
+      return NextResponse.json({ error: 'assigned_to_unavailable', message: '担当ユーザーを解決できませんでした' }, { status: 500 });
+    }
 
-    const sourceValue =
-      typeof body.source === 'string' && body.source.trim()
-        ? body.source.trim()
-        : autoRegister
-          ? fallbackSourceCode ?? draft.source
-          : '';
+    const resolvedSourceCode = autoRegister
+      ? resolveSourceCodeForAutoRegister(body.source, sourceCodes, fallbackSourceCode)
+      : (typeof body.source === 'string' && body.source.trim() ? body.source.trim() : '');
+
+    const sourceValue = resolvedSourceCode ?? fallbackSourceCode ?? draft.source;
     const referrerValue = typeof body.agency_code === 'string' ? body.agency_code : '';
     const retirementDateValue =
       typeof body.retirement_date === 'string' && body.retirement_date.trim()
@@ -112,22 +242,27 @@ export async function POST(request: NextRequest) {
         ? body.deal_date.trim()
         : draft.deal_date;
     const ageValue =
-      typeof body.custom_data?.age === 'string' || typeof body.custom_data?.age === 'number'
+      typeof body.age === 'string' || typeof body.age === 'number'
+        ? String(body.age)
+        : typeof body.custom_data?.age === 'string' || typeof body.custom_data?.age === 'number'
         ? String(body.custom_data.age)
-        : parsed.age || '';
+        : parsed.age || extractCalendarField([event.summary, event.description], '年齢') || '';
     const emailValue =
       typeof body.custom_data?.email === 'string'
         ? body.custom_data.email
-        : parsed.email || '';
+        : parsed.email || extractCalendarField([event.summary, event.description], 'メールアドレス') || '';
     const phoneValue =
       typeof body.custom_data?.phone === 'string'
         ? body.custom_data.phone
-        : parsed.phone || '';
+        : parsed.phone || extractCalendarField([event.summary, event.description], '電話番号') || '';
 
     const validation = validateCalendarDealInput(
       {
         customer_name: customerNameValue,
-        assigned_to: typeof body.assigned_to === 'string' && body.assigned_to.trim() ? body.assigned_to.trim() : session.userId,
+        assigned_to:
+          typeof body.assigned_to === 'string' && body.assigned_to.trim()
+            ? body.assigned_to.trim()
+            : resolvedAssignedToId,
         retirement_date: retirementDateValue,
         deal_date: dealDateValue,
         age: ageValue,
@@ -139,19 +274,11 @@ export async function POST(request: NextRequest) {
       {
         sourceCodes,
         agencyCodes,
+        requireSourceOrReferrer: false,
+        skipSourceCodeValidation: true,
+        skipAgencyCodeValidation: true,
       }
     );
-
-    if (!validation.isValid) {
-      return NextResponse.json(
-        {
-          error: 'validation_failed',
-          message: '入力内容を確認してください',
-          field_errors: validation.errors,
-        },
-        { status: 400 }
-      );
-    }
 
     const sourceCode = validation.normalized.source || null;
     const agencyCode = validation.normalized.referrer || null;
@@ -160,14 +287,15 @@ export async function POST(request: NextRequest) {
     const dealDate = validation.normalized.deal_date;
     const email = validation.normalized.email || undefined;
     const phone = validation.normalized.phone || undefined;
+    const dealNotesValue = draft.deal_notes?.trim() ? draft.deal_notes : null;
 
-    // 退職前サポートの自動登録は、後から編集できる項目（年齢・メールアドレス）を
-    // 厳密な必須条件にしない。ここで弾くと、タイトル表示だけで来るイベントが
-    // 自動登録できずに失敗扱いになってしまう。
+    // 退職前サポートの自動登録は、後から編集できる項目（退職予定日・年齢・メールアドレス・流入経路）を
+    // 厳密な必須条件にしない。ここで弾くと、説明欄に不足がある予定が自動登録できずに
+    // 失敗扱いになってしまう。
     const blockingErrors = Object.fromEntries(
       Object.entries(validation.errors).filter(([field]) => {
         if (!autoRegister) return true;
-        return field !== 'age' && field !== 'email';
+        return field !== 'age' && field !== 'email' && field !== 'retirement_date' && field !== 'source' && field !== 'referrer';
       })
     );
 
@@ -182,14 +310,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: existing, error: existingError } = await supabase
-      .from('deals')
-      .select('id')
-      .eq('calendar_event_id', draft.calendar_event_id)
-      .maybeSingle();
-    if (existingError) {
+    let existing: { id: string } | null = null;
+    try {
+      existing = await findExistingCalendarDeal(supabase, {
+        calendarEventId: draft.calendar_event_id,
+        customerName,
+        dealDate,
+        dealNotes: dealNotesValue,
+        assignedToId: resolvedAssignedToId,
+      });
+    } catch (existingError) {
       console.error('[deals/from-calendar] existing check error:', existingError);
-      return NextResponse.json({ error: 'existing_check_failed', message: existingError.message }, { status: 500 });
+      const message = existingError instanceof Error ? existingError.message : 'existing_check_failed';
+      return NextResponse.json({ error: 'existing_check_failed', message }, { status: 500 });
     }
 
     if (existing?.id) {
@@ -199,13 +332,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const dealId = buildDealId();
+    const dealId = buildDealId(draft.calendar_event_id);
     const payload = {
       id: dealId,
       customer_name: customerName,
-      assigned_to: session.userId,
+      assigned_to: resolvedAssignedToId,
       deal_date: dealDate,
-      deal_notes: draft.deal_notes,
+      deal_notes: dealNotesValue,
       source: sourceCode,
       age: validation.normalized.age || null,
       agency_code: agencyCode,
@@ -220,8 +353,8 @@ export async function POST(request: NextRequest) {
         phone: validation.normalized.phone || undefined,
       },
       phone,
-      created_by: session.userId,
-      updated_by: session.userId,
+      created_by: resolvedAssignedToId,
+      updated_by: resolvedAssignedToId,
     };
 
     // Debug mode: if the request includes a `debug` flag, return the generated notes without inserting
@@ -235,10 +368,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const { error } = await writeDealWithCustomDataFallback(
+    const { error } = await writeDealWithMissingColumnFallback(
       'deals/from-calendar insert',
-      async () => await supabase.from('deals').insert(payload),
-      async () => await supabase.from('deals').insert(stripCustomDataColumn(payload))
+      payload,
+      async (writePayload) => await supabase.from('deals').insert(writePayload)
     );
     if (error) {
       if (error.code === '23505') {

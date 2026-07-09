@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { DealRegisterModal } from '@/components/DealRegisterModal';
 import type { DealAutoFields } from '@/components/DealRegisterModal';
 import { validateCalendarDealInput } from '@/lib/calendar-deal-validation';
-import { isSpecialCalendarEvent } from '@/lib/ical';
+import { extractCalendarField, isSpecialCalendarEvent } from '@/lib/ical';
 import { useCurrentUser } from '@/lib/user-context';
 import { getAgencies, getSources, type MAgency, type MSource } from '@/lib/supabase';
 
@@ -93,18 +93,6 @@ function extractCustomerNameFromDescription(description?: string | null): string
   return '';
 }
 
-function extractFieldFromDescription(description: string | null | undefined, fieldName: string): string {
-  if (!description) return '';
-  const lines = description.split('\n').map((v) => v.trim()).filter(Boolean);
-  for (const line of lines) {
-    const matched = line.match(/^([^:：]+)\s*[:：]\s*(.*)$/);
-    if (!matched) continue;
-    if (!matched[1].includes(fieldName)) continue;
-    return matched[2].trim();
-  }
-  return '';
-}
-
 type GoogleCalendarPanelProps = {
   onDealCreated?: () => void;
 };
@@ -129,8 +117,11 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
   const [customData, setCustomData] = useState<Record<string, any>>({});
   const [sources, setSources] = useState<MSource[]>([]);
   const [agencies, setAgencies] = useState<MAgency[]>([]);
+  const [sourcesLoaded, setSourcesLoaded] = useState(false);
+  const [agenciesLoaded, setAgenciesLoaded] = useState(false);
   const [specialEventStates, setSpecialEventStates] = useState<Record<string, SpecialEventStatus>>({});
   const [specialEventDealIds, setSpecialEventDealIds] = useState<Record<string, string>>({});
+  const [specialEventErrors, setSpecialEventErrors] = useState<Record<string, string>>({});
   const initialized = useRef(false);
   const specialEventInFlightRef = useRef<Set<string>>(new Set());
 
@@ -160,10 +151,14 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
         setSpecialEventState(eventId, 'pending');
         try {
           const retirementDate = extractRetirementDateFromDescription(ev.description);
-          const customerName = extractCustomerNameFromDescription(ev.description) || ev.summary || '';
-          const ageRaw = extractFieldFromDescription(ev.description, '年齢');
-          const email = extractFieldFromDescription(ev.description, 'メールアドレス');
-          const phone = extractFieldFromDescription(ev.description, '電話番号');
+          const customerName =
+            extractCalendarField([ev.summary, ev.description], '氏名') ||
+            extractCustomerNameFromDescription(ev.description) ||
+            ev.summary ||
+            '';
+          const ageRaw = extractCalendarField([ev.summary, ev.description], '年齢');
+          const email = extractCalendarField([ev.summary, ev.description], 'メールアドレス');
+          const phone = extractCalendarField([ev.summary, ev.description], '電話番号');
           const res = await fetch('/api/deals/from-calendar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -183,6 +178,9 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
                 email: email || undefined,
                 phone: phone || undefined,
               },
+              source_codes: sources.map((s) => s.code),
+              agency_codes: agencies.map((a) => a.code),
+              age: ageRaw ? Number(String(ageRaw).replace(/[^\d]/g, '')) || ageRaw : undefined,
               phone: phone || undefined,
               auto_register: true,
             }),
@@ -191,6 +189,11 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
 
           if (res.ok && json?.deal_id) {
             setSpecialEventDealIds((prev) => ({ ...prev, [eventId]: String(json.deal_id) }));
+            setSpecialEventErrors((prev) => {
+              const next = { ...prev };
+              delete next[eventId];
+              return next;
+            });
             setSpecialEventState(eventId, 'registered');
             specialEventInFlightRef.current.delete(eventId);
             onDealCreated?.();
@@ -201,6 +204,11 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
             if (json?.deal_id) {
               setSpecialEventDealIds((prev) => ({ ...prev, [eventId]: String(json.deal_id) }));
             }
+            setSpecialEventErrors((prev) => {
+              const next = { ...prev };
+              delete next[eventId];
+              return next;
+            });
             setSpecialEventState(eventId, 'registered');
             specialEventInFlightRef.current.delete(eventId);
             continue;
@@ -213,16 +221,24 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
             message: json?.message,
             field_errors: json?.field_errors,
           });
+          setSpecialEventErrors((prev) => ({
+            ...prev,
+            [eventId]: json?.message || json?.error || `HTTP ${res.status}`,
+          }));
           setSpecialEventState(eventId, 'failed');
           specialEventInFlightRef.current.delete(eventId);
         } catch (e) {
           console.error('[GoogleCalendarPanel] auto register failed:', e);
+          setSpecialEventErrors((prev) => ({
+            ...prev,
+            [eventId]: e instanceof Error ? e.message : '登録に失敗しました',
+          }));
           setSpecialEventState(eventId, 'failed');
           specialEventInFlightRef.current.delete(eventId);
         }
       }
     },
-    [onDealCreated, specialEventStates, setSpecialEventState]
+    [agencies, onDealCreated, specialEventStates, setSpecialEventState, sources]
   );
 
   const fetchEvents = useCallback(async () => {
@@ -268,16 +284,21 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
 
   useEffect(() => {
     if (initialized.current) return;
+    if (!sourcesLoaded || !agenciesLoaded) return;
     initialized.current = true;
     void fetchEvents();
-  }, [fetchEvents]);
+  }, [agenciesLoaded, fetchEvents, sourcesLoaded]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const data = await getSources(true);
-      if (cancelled) return;
-      setSources(data);
+      try {
+        const data = await getSources(true);
+        if (cancelled) return;
+        setSources(data);
+      } finally {
+        if (!cancelled) setSourcesLoaded(true);
+      }
     })();
     return () => {
       cancelled = true;
@@ -287,9 +308,13 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const data = await getAgencies(true);
-      if (cancelled) return;
-      setAgencies(data);
+      try {
+        const data = await getAgencies(true);
+        if (cancelled) return;
+        setAgencies(data);
+      } finally {
+        if (!cancelled) setAgenciesLoaded(true);
+      }
     })();
     return () => {
       cancelled = true;
@@ -320,6 +345,7 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
       setRegisterSuccess(null);
       setSpecialEventStates({});
       setSpecialEventDealIds({});
+      setSpecialEventErrors({});
       specialEventInFlightRef.current.clear();
       void fetchEvents();
     } catch (e) {
@@ -347,6 +373,9 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
       {
         sourceCodes: sources.map((s) => s.code),
         agencyCodes: agencies.map((a) => a.code),
+        requireSourceOrReferrer: false,
+        skipSourceCodeValidation: true,
+        skipAgencyCodeValidation: true,
       }
     );
     if (!validation.isValid) {
@@ -382,6 +411,7 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
             email: normalized.email || undefined,
             phone: normalized.phone || undefined,
           },
+          age: normalized.age ? Number(String(normalized.age).replace(/[^\d]/g, '')) || normalized.age : undefined,
           phone: normalized.phone || undefined,
         }),
       });
@@ -418,6 +448,7 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
     setRegisterSuccess(null);
     setSpecialEventStates({});
     setSpecialEventDealIds({});
+    setSpecialEventErrors({});
     specialEventInFlightRef.current.clear();
   };
 
@@ -560,9 +591,9 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
                   setRetirementDate(extractRetirementDateFromDescription(ev.description));
                   setRegisterError(null);
                   setRegisterSuccess(null);
-                  const ageRaw = extractFieldFromDescription(ev.description, '年齢');
-                  const email = extractFieldFromDescription(ev.description, 'メールアドレス');
-                  const phone = extractFieldFromDescription(ev.description, '電話番号');
+                  const ageRaw = extractCalendarField([ev.summary, ev.description], '年齢');
+                  const email = extractCalendarField([ev.summary, ev.description], 'メールアドレス');
+                  const phone = extractCalendarField([ev.summary, ev.description], '電話番号');
                   const ageNum = ageRaw ? Number(String(ageRaw).replace(/[^\d]/g, '')) : NaN;
                   setCustomData({
                     age: Number.isFinite(ageNum) ? ageNum : ageRaw,
@@ -595,6 +626,11 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
                     )}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">{formatStart(ev)}</p>
+                  {special && autoStatus === 'failed' && eventId && specialEventErrors[eventId] && (
+                    <p className="mt-1 text-[11px] leading-4 text-red-600">
+                      {specialEventErrors[eventId]}
+                    </p>
+                  )}
                 </div>
                 {ev.htmlLink && !special && (
                   <span className="text-xs text-blue-600 whitespace-nowrap flex-shrink-0">クリックで商談化</span>
@@ -616,13 +652,16 @@ export function GoogleCalendarPanel({ onDealCreated }: GoogleCalendarPanelProps)
               終了: formatDateTimeJst(selectedEvent.end?.dateTime ?? selectedEvent.end?.date ?? ''),
             }}
             autoFields={{
-              顧客名: extractCustomerNameFromDescription(selectedEvent.description) || (selectedEvent.summary ?? ''),
+              顧客名:
+                extractCalendarField([selectedEvent.summary, selectedEvent.description], '氏名') ||
+                extractCustomerNameFromDescription(selectedEvent.description) ||
+                (selectedEvent.summary ?? ''),
               担当者: currentUser.name,
               退職予定日: retirementDate,
               商談日: (selectedEvent.start?.dateTime ?? selectedEvent.start?.date ?? '').slice(0, 10),
-              年齢: extractFieldFromDescription(selectedEvent.description, '年齢'),
-              メールアドレス: extractFieldFromDescription(selectedEvent.description, 'メールアドレス'),
-              電話番号: extractFieldFromDescription(selectedEvent.description, '電話番号'),
+              年齢: extractCalendarField([selectedEvent.summary, selectedEvent.description], '年齢'),
+              メールアドレス: extractCalendarField([selectedEvent.summary, selectedEvent.description], 'メールアドレス'),
+              電話番号: extractCalendarField([selectedEvent.summary, selectedEvent.description], '電話番号'),
               流入経路: '',
               紹介者: '',
             }}

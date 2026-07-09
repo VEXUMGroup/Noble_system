@@ -46,6 +46,20 @@ function parseIcsDate(value: string): Date | null {
   return null;
 }
 
+function getJstDayStart(base: Date = new Date()): Date {
+  // 「今日」を日本時間基準で判定し、当日中の過去予定も落とさないようにする。
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(base);
+  const year = Number(parts.find((part) => part.type === 'year')?.value);
+  const month = Number(parts.find((part) => part.type === 'month')?.value);
+  const day = Number(parts.find((part) => part.type === 'day')?.value);
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0) - 9 * 60 * 60 * 1000);
+}
+
 /**
  * iCal URL を fetch してイベント一覧を返す（サーバー専用）。
  * @param icalUrl Google カレンダーの「非公開 iCal URL」
@@ -55,9 +69,8 @@ export async function fetchICalEvents(
   icalUrl: string,
   daysAhead = 7
 ): Promise<ICalEvent[]> {
-  const now = new Date();
-  const until = new Date(now);
-  until.setDate(until.getDate() + daysAhead);
+  const rangeStart = getJstDayStart();
+  const until = new Date(rangeStart.getTime() + daysAhead * 24 * 60 * 60 * 1000);
 
   const res = await fetch(icalUrl, { cache: 'no-store' });
   if (!res.ok) {
@@ -78,7 +91,8 @@ export async function fetchICalEvents(
       if (current?.start) {
         const start = current.start;
         const end = current.end ?? current.start;
-        if (start <= until && end >= now) {
+        // 当日分は過去時刻でも表示したいので、比較基準を「現在」ではなく「今日の開始」にする。
+        if (start < until && end >= rangeStart) {
           events.push({
             id: current.id ?? `${start.getTime()}`,
             summary: current.summary ?? '（タイトルなし）',
@@ -144,9 +158,7 @@ function normalizeDateTextToIso(raw: string): string | undefined {
   return `${y}-${mm}-${dd}`;
 }
 
-export function parseLStepCalendarDescription(description?: string): LStepCalendarProfile {
-  if (!description?.trim()) return { noteLines: [] };
-  const lines = description.split('\n').map((v) => v.trim()).filter(Boolean);
+function parseCalendarLines(lines: string[]): LStepCalendarProfile {
   const profile: LStepCalendarProfile = { noteLines: [] };
 
   for (const line of lines) {
@@ -169,8 +181,43 @@ export function parseLStepCalendarDescription(description?: string): LStepCalend
   return profile;
 }
 
+export function parseLStepCalendarDescription(description?: string): LStepCalendarProfile {
+  if (!description?.trim()) return { noteLines: [] };
+  const lines = description.split('\n').map((v) => v.trim()).filter(Boolean);
+  return parseCalendarLines(lines);
+}
+
+export function parseLStepCalendarText(...texts: Array<string | undefined | null>): LStepCalendarProfile {
+  const lines = texts
+    .flatMap((text) => (text?.trim() ? text.split('\n') : []))
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return { noteLines: [] };
+  return parseCalendarLines(lines);
+}
+
+export function extractCalendarField(
+  texts: Array<string | undefined | null>,
+  fieldName: string
+): string {
+  const lines = texts
+    .flatMap((text) => (text?.trim() ? text.split('\n') : []))
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const matched = line.match(/^([^:：]+)\s*[:：]\s*(.*)$/);
+    if (!matched) continue;
+    if (!matched[1].includes(fieldName)) continue;
+    return matched[2].trim();
+  }
+
+  return '';
+}
+
 export function formatEventForDeal(event: ICalEvent): CalendarDealDraft {
-  const parsed = parseLStepCalendarDescription(event.description);
+  const parsed = parseLStepCalendarText(event.summary, event.description);
   return {
     customer_name: parsed.customerName || event.summary?.trim() || '（タイトルなし）',
     deal_date: event.start.toISOString().slice(0, 10),

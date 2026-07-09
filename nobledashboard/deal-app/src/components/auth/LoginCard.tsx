@@ -15,6 +15,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   missing_supabase_env: 'Supabaseの環境変数が不足しています。',
   missing_auth_secret: 'ログイン用セッションの秘密鍵(APP_AUTH_SECRET)が不足しています。',
   missing_callback_params: 'ログインに必要な情報が不足しています。',
+  internal_error:
+    'サーバー側で一時的なエラーが発生しました。少し待ってから再度お試しください。',
 };
 
 type LoginCardProps = {

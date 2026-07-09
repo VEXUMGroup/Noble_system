@@ -12,6 +12,7 @@ import { formatCurrency, formatDate, getDaysUntil } from '@/lib/format';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { getDeal } from '@/lib/supabase';
 import { updateDealById } from '@/lib/deals-api';
+import { resolveDealAgeValue } from '@/lib/deal-age';
 import { useMasterData } from '@/lib/useMasterData';
 import { useCurrentUser } from '@/lib/useCurrentUser';
 import {
@@ -61,7 +62,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
   const dealProgressValidation = validateDealProgressInput({
     assigned_to: deal?.assigned_to ?? '',
     deal_date: deal?.deal_date ?? '',
-    age: String(deal?.custom_data?.age ?? deal?.age ?? ''),
+    age: resolveDealAgeValue(deal?.custom_data?.age, deal?.age),
     email: deal?.email ?? deal?.custom_data?.email ?? '',
     source: deal?.source ?? '',
     referrer: deal?.agency_code ?? deal?.referrer ?? '',
@@ -243,7 +244,9 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
           </div>
           <div>
             <p className="text-sm text-gray-600 mb-1">金額</p>
-            <p className="text-gray-900 font-medium">{formatCurrency(deal.amount)}</p>
+            <p className="text-gray-900 font-medium">
+              {typeof deal.amount === 'number' && Number.isFinite(deal.amount) ? formatCurrency(deal.amount) : '-'}
+            </p>
           </div>
           <div>
             <p className="text-sm text-gray-600 mb-1">支払方法</p>
