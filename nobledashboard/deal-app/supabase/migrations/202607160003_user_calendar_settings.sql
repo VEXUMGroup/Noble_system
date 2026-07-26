@@ -9,9 +9,20 @@ create table if not exists user_calendar_settings (
 alter table user_calendar_settings enable row level security;
 
 -- サービスロール（admin）は全操作可能
-create policy "service role full access"
-  on user_calendar_settings
-  for all
-  to service_role
-  using (true)
-  with check (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'user_calendar_settings'
+      AND policyname = 'service role full access'
+  ) THEN
+    CREATE POLICY "service role full access"
+      ON user_calendar_settings
+      FOR ALL
+      TO service_role
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+END $$;

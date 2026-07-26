@@ -10,18 +10,23 @@ import {
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatDate } from '@/lib/format';
 import {
-  consideringReasons,
   outOfScopeReasons,
   lostReasons,
   hrProposalOptions,
   hrFeasibilityOptions,
+  mediaOptions,
+  campaignIdOptions,
 } from '@/lib/constants';
 import { useMasterData } from '@/lib/useMasterData';
 import { getDeal } from '@/lib/supabase';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
 import { resolveDealAgeValue } from '@/lib/deal-age';
 import { validateCustomDataOrThrow, type DealCustomFieldDefinition } from '@/lib/custom-fields';
-import { updateDealById } from '@/lib/deals-api';
+import {
+  DEAL_AGE_STORAGE_MIGRATION_MESSAGE,
+  isDealAgeStorageMigrationError,
+  updateDealById,
+} from '@/lib/deals-api';
 import {
   getDealProgressFieldLabel,
   getDealProgressValidationMessage,
@@ -61,7 +66,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const { users, sources, agencies, statuses } = useMasterData();
   const NO_SOURCE_LABELS = new Set(['流入経路なし', '流入経路無し', '不明', 'なし']);
   const interviewStatusOptions = statuses.filter((s) => s.code.startsWith('ST_'));
-  const resultStatusOptions = statuses.filter((s) => s.code.startsWith('RS_'));
+  const resultStatusOptions = statuses.filter((s) => s.code.startsWith('RS_') && s.code !== 'RS_PEND');
   const [deal, setDeal] = useState<Record<string, any> | null>(null);
   const [dealLoading, setDealLoading] = useState(true);
   const [dealError, setDealError] = useState<string>('');
@@ -100,7 +105,6 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   // 結果入力フォームの状態（INTERVIEWED のとき表示）
   const [resultStatus, setResultStatus] = useState('');
   const resultStatusRef = useRef<HTMLSelectElement | null>(null);
-  const [consideringReason, setConsideringReason] = useState('');
   const [consideringComment, setConsideringComment] = useState('');
   const [outOfScopeReason, setOutOfScopeReason] = useState('');
   const [outOfScopeComment, setOutOfScopeComment] = useState('');
@@ -136,6 +140,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const editEmailRef = useRef<HTMLInputElement | null>(null);
   const [editPhone, setEditPhone] = useState('');
   const [editProspectLevel, setEditProspectLevel] = useState('');
+  const [editMedia, setEditMedia] = useState('');
+  const [editCampaignId, setEditCampaignId] = useState('');
   const [editAgencyType, setEditAgencyType] = useState('');
   const [editMemo, setEditMemo] = useState('');
   const [customFieldDefs, setCustomFieldDefs] = useState<DealCustomFieldDefinition[]>([]);
@@ -145,6 +151,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const customerSaveTimerRef = useRef<number | null>(null);
   const customerSavePromiseRef = useRef<Promise<boolean> | null>(null);
   const persistCustomerChangesRef = useRef<((options?: { silent?: boolean }) => Promise<boolean>) | null>(null);
+  const ageStorageMigrationBlockedRef = useRef(false);
   const isCustomerFormReadyRef = useRef(false);
   const customerFormHydratedDealIdRef = useRef<string | null>(null);
   const dealRef = useRef<Record<string, any> | null>(null);
@@ -224,6 +231,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       email: normalizedEmail || null,
       phone: normalizedPhone || null,
       prospect_level: editProspectLevel || null,
+      media: editMedia || null,
+      campaign_id: editCampaignId || null,
       agency_type: editAgencyType || null,
       memo: editMemo || null,
       custom_data: {
@@ -249,6 +258,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       email: deal?.email ?? deal?.custom_data?.email ?? '',
       phone: deal?.phone ?? deal?.custom_data?.phone ?? '',
       prospect_level: deal?.prospect_level ?? '',
+      media: deal?.media ?? '',
+      campaign_id: deal?.campaign_id ?? '',
       agency_type: deal?.agency_type ?? '',
       memo: deal?.memo ?? '',
       custom_data: {
@@ -272,6 +283,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       email: getLiveEditValues().email.trim(),
       phone: editPhone.trim(),
       prospect_level: editProspectLevel || '',
+      media: editMedia || '',
+      campaign_id: editCampaignId || '',
       agency_type: editAgencyType || '',
       memo: editMemo || '',
       custom_data: {
@@ -291,6 +304,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   const selectedResultStatus = resultStatusOptions.find((s) => s.code === resultStatus);
   const canRecordResult = new Set(['ST_MEETING', 'INTERVIEWED', 'CONSIDERING', 'RS_PEND', 'RS_IN_PROG', 'RS_REDEAL']).has(String(dealStatus));
   const isFollowUpResultStatus = new Set(['CONSIDERING', 'RS_PEND', 'RS_IN_PROG', 'RS_REDEAL']).has(String(dealStatus));
+  const showFollowUpInputs = new Set(['RS_PEND', 'CONSIDERING', 'RS_IN_PROG', 'RS_REDEAL']).has(resultStatus);
+  const isActiveFollowUpStatus = new Set(['RS_IN_PROG', 'RS_REDEAL']).has(resultStatus);
 
   useEffect(() => {
     if (!deal) return;
@@ -308,6 +323,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setEditEmail(deal.email ?? deal.custom_data?.email ?? '');
     setEditPhone(deal.phone ?? deal.custom_data?.phone ?? '');
     setEditProspectLevel(deal.prospect_level ?? '');
+    setEditMedia(deal.media ?? '');
+    setEditCampaignId(deal.campaign_id ?? '');
     setEditAgencyType(deal.agency_type ?? '');
     setEditMemo(deal.memo ?? '');
     setEditCustomData({
@@ -332,6 +349,39 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       };
     });
   }, [deal?.age, deal?.custom_data?.age, isCustomerFormReady]);
+
+  useEffect(() => {
+    if (!deal) return;
+    setResultStatus(typeof deal.status === 'string' ? deal.status : '');
+    const savedConsideringReason = typeof deal.considering_reason === 'string' ? deal.considering_reason : '';
+    const savedConsideringComment =
+      typeof deal.considering_reason_comment === 'string' ? deal.considering_reason_comment : '';
+    setConsideringComment(
+      savedConsideringComment || savedConsideringReason
+    );
+    setOutOfScopeReason(typeof deal.out_of_scope_reason === 'string' ? deal.out_of_scope_reason : '');
+    setOutOfScopeComment(
+      typeof deal.out_of_scope_reason_comment === 'string' ? deal.out_of_scope_reason_comment : ''
+    );
+    setLostReason(typeof deal.lost_reason === 'string' ? deal.lost_reason : '');
+    setLostComment(typeof deal.lost_reason_comment === 'string' ? deal.lost_reason_comment : '');
+    setHrProposal(typeof deal.hr_proposal === 'string' ? deal.hr_proposal : '');
+    setHrFeasibility(typeof deal.hr_feasibility === 'string' ? deal.hr_feasibility : '');
+    setHrTarget28m(Boolean(deal.hr_target_28m));
+    setNextActionDate(typeof deal.next_action_date === 'string' ? deal.next_action_date : '');
+  }, [
+    deal?.status,
+    deal?.considering_reason,
+    deal?.considering_reason_comment,
+    deal?.out_of_scope_reason,
+    deal?.out_of_scope_reason_comment,
+    deal?.lost_reason,
+    deal?.lost_reason_comment,
+    deal?.hr_proposal,
+    deal?.hr_feasibility,
+    deal?.hr_target_28m,
+    deal?.next_action_date,
+  ]);
 
   useEffect(() => {
     isCustomerFormReadyRef.current = isCustomerFormReady;
@@ -375,6 +425,12 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
 
   const persistCustomerChanges = async (options: { silent?: boolean } = {}) => {
     if (!deal) return false;
+    if (ageStorageMigrationBlockedRef.current) {
+      if (!options.silent) {
+        setCustomerSaveError(DEAL_AGE_STORAGE_MIGRATION_MESSAGE);
+      }
+      return false;
+    }
 
     const snapshotBeforeSave = currentCustomerSnapshot;
     if (snapshotBeforeSave === lastSavedCustomerSnapshotRef.current) {
@@ -429,6 +485,11 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : '保存に失敗しました';
+        if (isDealAgeStorageMigrationError(error)) {
+          ageStorageMigrationBlockedRef.current = true;
+          setCustomerSaveError(message);
+          return false;
+        }
         if (!options.silent) {
           console.error('Update error:', error);
           setCustomerSaveError(message);
@@ -457,6 +518,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
   useEffect(() => {
     if (!isCustomerFormReady || !deal) return;
     if (!hasUnsavedCustomerChanges) return;
+    if (ageStorageMigrationBlockedRef.current) return;
 
     if (customerSaveTimerRef.current !== null) {
       window.clearTimeout(customerSaveTimerRef.current);
@@ -481,7 +543,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       if (successToastTimerRef.current !== null) {
         window.clearTimeout(successToastTimerRef.current);
       }
-      if (isCustomerFormReadyRef.current && dealRef.current) {
+      if (isCustomerFormReadyRef.current && dealRef.current && !ageStorageMigrationBlockedRef.current) {
         void persistCustomerChangesRef.current?.({ silent: true });
       }
     };
@@ -549,7 +611,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     }
   };
 
-  // ── 結果を保存（INTERVIEWED / CONSIDERING → 成約/検討/対象外/失注）
+  // ── 結果を保存（INTERVIEWED / follow-up status → 次の結果へ更新）
   const handleSaveResult = async () => {
     if (!(await persistCustomerChanges())) {
       return;
@@ -579,8 +641,13 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
       lost_reason_comment: null,
       updated_at: new Date().toISOString(),
     };
-    if (statusValue === 'RS_PEND' || statusValue === 'CONSIDERING') {
-      payload.considering_reason = consideringReason || null;
+    if (
+      statusValue === 'RS_PEND' ||
+      statusValue === 'CONSIDERING' ||
+      statusValue === 'RS_IN_PROG' ||
+      statusValue === 'RS_REDEAL'
+    ) {
+      payload.considering_reason = null;
       payload.considering_reason_comment = consideringComment || null;
     }
     if (statusValue === 'RS_OUT_SCOPE' || statusValue === 'OUT_OF_SCOPE') {
@@ -627,6 +694,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
     setEditEmail(deal.email ?? deal.custom_data?.email ?? '');
     setEditPhone(deal.phone ?? deal.custom_data?.phone ?? '');
     setEditProspectLevel(deal.prospect_level ?? '');
+    setEditMedia(deal.media ?? '');
+    setEditCampaignId(deal.campaign_id ?? '');
     setEditAgencyType(deal.agency_type ?? '');
     setEditMemo(deal.memo ?? '');
     setEditCustomData({
@@ -823,6 +892,24 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 </select>
               </div>
               <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">媒体</label>
+                <select value={editMedia} onChange={(e) => setEditMedia(e.target.value)} className={inputClass}>
+                  <option value="">-- 未選択 --</option>
+                  {mediaOptions.map((media) => (
+                    <option key={media} value={media}>{media}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">キャンペーンID</label>
+                <select value={editCampaignId} onChange={(e) => setEditCampaignId(e.target.value)} className={inputClass}>
+                  <option value="">-- 未選択 --</option>
+                  {campaignIdOptions.map((campaignId) => (
+                    <option key={campaignId} value={campaignId}>{campaignId}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">流入経路 <span className="text-red-500">*</span></label>
                 <select ref={editSourceCodeRef} value={normalizeSourceValue(editSourceCode)} onChange={(e) => setEditSourceCode(e.target.value)} className={inputClass}>
                   <option value="">-- 未選択 --</option>
@@ -982,6 +1069,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
               ['メールアドレス *', deal.email ?? deal.custom_data?.email ?? '-'],
               ['電話番号', deal.phone ?? deal.custom_data?.phone ?? '-'],
               ['見込み顧客', deal.prospect_level ?? '-'],
+              ['媒体', deal.media ?? '-'],
+              ['キャンペーンID', deal.campaign_id ?? '-'],
               ['流入経路（エルステ経由） *', sources.find((s) => s.code === normalizeSourceValue(deal.source))?.name ?? normalizeSourceValue(deal.source) ?? '-'],
               ['紹介者（代理店経由）', agencies.find((a) => a.code === deal.agency_code)?.name ?? deal.agency_code ?? '-'],
               ['退職予定日', deal.retirement_date ? formatDate(deal.retirement_date) : '-'],
@@ -1104,7 +1193,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
         </div>
       )}
 
-      {/* ── STEP 2: 結果入力（INTERVIEWED / CONSIDERING のとき） ── */}
+      {/* ── STEP 2: 結果入力（INTERVIEWED / follow-up status のとき） ── */}
       {canRecordResult && (
         <div id="result-entry-section" className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
           <h2 className="text-base font-bold text-gray-900 mb-1">
@@ -1112,8 +1201,8 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
           </h2>
           <p className="text-xs text-gray-500 mb-5">
             {isFollowUpResultStatus
-              ? '成約・対象外・失注・検討・商談中・再商談のいずれかに変更できます。'
-              : '成約・検討・商談中・再商談・対象外・失注のいずれかを選択してください。'}
+              ? '成約・対象外・失注・商談中・再商談のいずれかに変更できます。'
+              : '成約・商談中・再商談・対象外・失注のいずれかを選択してください。'}
           </p>
 
           <div className="space-y-5">
@@ -1129,10 +1218,7 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                 className={resultError ? selectErrorClass : selectClass}
               >
                 <option value="">-- 選択してください --</option>
-                {(isFollowUpResultStatus
-                  ? resultStatusOptions.filter((s) => s.code !== 'RS_PEND')
-                  : resultStatusOptions
-                ).map((s) => (
+                {resultStatusOptions.map((s) => (
                   <option key={s.code} value={s.code}>{s.name}</option>
                 ))}
               </select>
@@ -1140,22 +1226,16 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
             </div>
 
             {/* 検討理由 */}
-            {(resultStatus === 'RS_PEND' || resultStatus === 'CONSIDERING') && (
+            {showFollowUpInputs && (
               <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg space-y-3 max-w-lg">
-                <p className="text-xs font-bold text-yellow-800">検討理由</p>
-                <select
-                  value={consideringReason}
-                  onChange={(e) => setConsideringReason(e.target.value)}
-                  className={selectClass}
-                >
-                  <option value="">-- 選択 --</option>
-                  {consideringReasons.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
+                <p className="text-xs font-bold text-yellow-800">
+                  {isActiveFollowUpStatus ? '追客メモ' : '検討理由'}
+                </p>
                 <textarea
                   value={consideringComment}
                   onChange={(e) => setConsideringComment(e.target.value)}
-                  placeholder="補足コメント（任意）"
-                  rows={2}
+                  placeholder={isActiveFollowUpStatus ? '追客内容をメモしてください' : '検討内容をメモしてください'}
+                  rows={3}
                   className={selectClass}
                 />
                 <div>
@@ -1166,6 +1246,9 @@ export default function DealDetailPage({ params }: DealDetailPageProps) {
                     onChange={(e) => setNextActionDate(e.target.value)}
                     className={selectClass}
                   />
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    カレンダーから選択できます。後続の追客通知で利用する予定です。
+                  </p>
                 </div>
               </div>
             )}

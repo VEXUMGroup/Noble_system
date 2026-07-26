@@ -7,6 +7,8 @@ import {
   insertNotificationLog,
   sendPushNotifications,
 } from '@/lib/push-notifications';
+import { getNotificationDetailUrl } from '@/lib/notifications';
+import { resolveNotificationRecipientUserIds } from '@/lib/notification-targets';
 import { addDaysToYmd, getJstTodayYmd } from '@/lib/date-utils';
 
 function isCronAuthorized(request: NextRequest) {
@@ -64,43 +66,57 @@ export async function GET(request: NextRequest) {
     let failures = 0;
 
     for (const target of targets) {
-      const message = `支払期日3日前です。${target.customerName} 様は未入金です。`;
-      const logResult = await insertNotificationLog({
-        notificationKey: target.reminderKey,
-        userId: target.assignedTo,
-        dealId: target.dealId,
-        message,
-        type: 'payment_due_3days',
+      const recipientUserIds = await resolveNotificationRecipientUserIds({
+        audience: 'sales',
+        assignedTo: target.assignedTo,
       });
-
-      if (!logResult.inserted) {
+      if (recipientUserIds.length === 0) {
         continue;
       }
 
-      const subscriptions = await getActivePushSubscriptions(target.assignedTo);
-      if (subscriptions.length === 0) {
-        continue;
-      }
+      const message = `支払期日3日前です。${target.customerName} 様は未入金です。`;
+      for (const recipientUserId of recipientUserIds) {
+        const logResult = await insertNotificationLog({
+          notificationKey: `${target.reminderKey}:${recipientUserId}`,
+          userId: recipientUserId,
+          dealId: target.dealId,
+          message,
+          type: 'payment_due_3days',
+        });
 
-      const result = await sendPushNotifications(
-        subscriptions.map((subscription) => subscription.subscription),
-        {
-          title: '支払期日3日前の未入金通知',
-          body: `${target.customerName} 様の入金期日が ${target.paymentDeadline} です。`,
-          url: '/payments',
-          tag: target.reminderKey,
-          data: {
-            dealId: target.dealId,
-            customerName: target.customerName,
-            paymentDeadline: target.paymentDeadline,
-            amount: target.amount,
-            unpaidAmount: target.unpaidAmount,
-          },
+        if (!logResult.inserted) {
+          continue;
         }
-      );
 
-      sent += result.sent;
-      failures += result.failures;
+        const subscriptions = await getActivePushSubscriptions(recipientUserId);
+        if (subscriptions.length === 0) {
+          continue;
+        }
+
+        const targetUrl = logResult.id ? getNotificationDetailUrl(logResult.id) : '/notifications';
+
+        const result = await sendPushNotifications(
+          subscriptions.map((subscription) => subscription.subscription),
+          {
+            title: '支払期日3日前の未入金通知',
+            body: `${target.customerName} 様の入金期日が ${target.paymentDeadline} です。`,
+            url: targetUrl,
+            tag: `${target.reminderKey}:${recipientUserId}`,
+            data: {
+              url: targetUrl,
+              notificationId: logResult.id,
+              dealId: target.dealId,
+              customerName: target.customerName,
+              paymentDeadline: target.paymentDeadline,
+              amount: target.amount,
+              unpaidAmount: target.unpaidAmount,
+            },
+          },
+        );
+
+        sent += result.sent;
+        failures += result.failures;
+      }
     }
 
     return NextResponse.json({

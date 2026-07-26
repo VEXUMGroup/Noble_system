@@ -38,7 +38,7 @@ export interface PaymentRecord {
 
 export interface Notification {
   id: string;
-  type: 'info' | 'warning' | 'success' | 'retirement_alert' | 'contract_complete';
+  type: 'info' | 'warning' | 'success' | 'retirement_alert' | 'deal_contracted' | 'approval_rejected';
   title: string;
   message: string;
   created_at: string;
@@ -236,9 +236,9 @@ export const mockNotifications: Notification[] = [
   },
   {
     id: 'n002',
-    type: 'contract_complete',
-    title: '契約締結',
-    message: '高橋 誠さんの契約締結が完了しました。',
+    type: 'deal_contracted',
+    title: '成約通知',
+    message: '高橋 誠さんが成約になりました。事務承認をお願いします。',
     created_at: '2026-04-15T16:30:00+09:00',
     is_read: true,
   },

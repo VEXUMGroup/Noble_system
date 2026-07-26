@@ -1,7 +1,7 @@
 -- 20260709_ensure_deal_age_storage.sql
 -- 目的:
 --   年齢の保存先を本番DBでも確実に用意する。
---   既存環境では 20260528_deal_custom_fields.sql / 20260625_add_age_to_deals.sql が
+--   既存環境では 202607160004_deal_custom_fields.sql / 202607160005_add_age_to_deals.sql が
 --   未適用のまま運用されている可能性があるため、両方を冪等に保証する。
 
 ALTER TABLE deals

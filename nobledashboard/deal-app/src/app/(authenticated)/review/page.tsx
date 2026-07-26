@@ -25,22 +25,22 @@ export default function ReviewPage() {
   const getPlanName = (code?: string) => plans.find((p) => p.code === code)?.name ?? code ?? '-';
   const getAgencyName = (code?: string) => agencies.find((a) => a.code === code)?.name ?? code ?? '-';
   const getSourceName = (code?: string) => sources.find((s) => s.code === code)?.name ?? code ?? '-';
-  const consideringStatusCodes = new Set(['CONSIDERING', 'RS_PEND', 'RS_IN_PROG', 'RS_REDEAL']);
+  const reviewTargetStatusCodes = new Set(['RS_IN_PROG', 'RS_REDEAL']);
 
   // Filter deals with consideration / active follow-up status
-  const consideringDeals = useMemo<DealRow[]>(() => {
-    return deals.filter((deal) => consideringStatusCodes.has(String(deal.status ?? '')));
+  const reviewDeals = useMemo<DealRow[]>(() => {
+    return deals.filter((deal) => reviewTargetStatusCodes.has(String(deal.status ?? '')));
   }, [deals]);
 
   // Calculate days remaining and sort
   const dealsWithDays = useMemo<Array<DealRow & { daysRemaining: number }>>(() => {
-    return consideringDeals
+    return reviewDeals
       .map((deal) => ({
         ...deal,
         daysRemaining: getDaysUntil(deal.retirement_date),
       }))
       .sort((a, b) => a.daysRemaining - b.daysRemaining);
-  }, [consideringDeals]);
+  }, [reviewDeals]);
 
   // Find alert deal (14 days or less)
   const alertDeal = useMemo(() => {
@@ -91,7 +91,7 @@ export default function ReviewPage() {
 
       {dealsWithDays.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm p-8 text-center">
-          <p className="text-gray-500">検討中の案件はありません</p>
+          <p className="text-gray-500">商談中・再商談の案件はありません</p>
         </div>
       ) : (
         <>

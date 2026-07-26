@@ -11,7 +11,7 @@ export type ICalEvent = {
 export const SPECIAL_EVENT_PREFIX = '退職前サポート';
 
 export function isSpecialCalendarEvent(summary?: string | null): boolean {
-  return (summary ?? '').trim().startsWith(SPECIAL_EVENT_PREFIX);
+  return (summary ?? '').includes(SPECIAL_EVENT_PREFIX);
 }
 
 function unfoldIcs(raw: string): string[] {

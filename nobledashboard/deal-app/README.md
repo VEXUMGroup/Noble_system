@@ -27,6 +27,18 @@ npm run dev
 
 ブラウザで `http://127.0.0.1:3000` を開きます。
 
+## 通知設定
+
+スマホ通知を使う場合は `.env.local` に以下も必要です。
+
+```sh
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=your-vapid-public-key
+VAPID_PRIVATE_KEY=your-vapid-private-key
+VAPID_SUBJECT=mailto:admin@example.com
+```
+
+値を追加・変更したあとは `npm run dev` を再起動してください。
+
 ## Node 20 に切り替える方法
 
 ### nvm を使う（推奨）

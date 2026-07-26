@@ -1,4 +1,4 @@
--- 20260528_deal_custom_fields.sql
+-- 202607160004_deal_custom_fields.sql
 -- 目的：
 --   商談(deals)のカスタム項目（定義 + 値）を管理画面から設定できるようにする。
 --   定義: deal_custom_fields

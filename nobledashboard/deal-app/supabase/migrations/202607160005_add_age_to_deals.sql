@@ -1,4 +1,4 @@
--- 20260625_add_age_to_deals.sql
+-- 202607160005_add_age_to_deals.sql
 -- 目的:
 --   deals の年齢情報を custom_data だけでなくトップレベル列でも保持できるようにする。
 

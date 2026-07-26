@@ -146,7 +146,7 @@ export default function ApprovalPage({ params }: ApprovalPageProps) {
           throw new Error('保存後のデータを取得できませんでした');
         }
         setDeal((prev) => (prev ? { ...prev, ...updated } : prev));
-        setSuccessMessage('「成約」ステータスに差し戻しました。営業担当へ承認依頼通知を送信しました。');
+        setSuccessMessage('「成約」ステータスに差し戻しました。営業担当へ差し戻し通知を送信しました。');
         setShowSuccess(true);
         setTimeout(() => {
           router.push(`/deals/${params.id}`);

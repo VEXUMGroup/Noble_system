@@ -69,6 +69,7 @@ export function PaymentReminderSetup({
 }) {
   const [status, setStatus] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
   const [permissionLabel, setPermissionLabel] = useState('未確認');
 
   useEffect(() => {
@@ -100,7 +101,7 @@ export function PaymentReminderSetup({
         throw new Error(json?.message ?? json?.error ?? 'push_subscription_failed');
       }
 
-      setStatus('この端末への通知を有効化しました。');
+      setStatus('この端末への通知を有効化しました。続けてテスト通知も送れます。');
       setPermissionLabel(formatPermissionLabel('granted'));
     } catch (error) {
       const code = error instanceof Error ? error.message : 'unknown_error';
@@ -118,6 +119,41 @@ export function PaymentReminderSetup({
     }
   };
 
+  const handleSendTest = async () => {
+    setIsSendingTest(true);
+    setStatus('');
+
+    try {
+      const response = await fetch('/api/push/test', {
+        method: 'POST',
+      });
+      const json = (await response.json().catch(() => null)) as
+        | { error?: string; sent?: number; failures?: number }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(json?.error ?? 'push_test_failed');
+      }
+
+      setStatus(`テスト通知を送信しました。送信成功 ${json?.sent ?? 0} 件、失敗 ${json?.failures ?? 0} 件です。`);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'unknown_error';
+      if (code === 'unauthorized') {
+        setStatus('ログイン状態を確認できませんでした。再ログインしてお試しください。');
+      } else if (code === 'subscription_not_found') {
+        setStatus('このユーザーに有効な通知購読がありません。先に「スマホ通知を有効化」を実行してください。');
+      } else if (code.includes('NEXT_PUBLIC_VAPID_PUBLIC_KEY')) {
+        setStatus('VAPID 公開鍵が未設定です。');
+      } else if (code.includes('VAPID_PRIVATE_KEY')) {
+        setStatus('VAPID 秘密鍵が未設定です。');
+      } else {
+        setStatus('テスト通知の送信に失敗しました。');
+      }
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
+
   return (
     <div className={`rounded-xl border border-blue-200 bg-blue-50 p-4 sm:p-5 ${className}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -130,14 +166,24 @@ export function PaymentReminderSetup({
             iPhone はホーム画面に追加した Web アプリで有効になります。現在の許可状態: {permissionLabel}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleEnable}
-          disabled={isSubmitting}
-          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
-        >
-          {isSubmitting ? '設定中...' : buttonLabel}
-        </button>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <button
+            type="button"
+            onClick={handleEnable}
+            disabled={isSubmitting}
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-400"
+          >
+            {isSubmitting ? '設定中...' : buttonLabel}
+          </button>
+          <button
+            type="button"
+            onClick={handleSendTest}
+            disabled={isSendingTest || isSubmitting}
+            className="inline-flex items-center justify-center rounded-lg border border-blue-300 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSendingTest ? '送信中...' : 'テスト通知を送る'}
+          </button>
+        </div>
       </div>
       {status && <p className="mt-3 text-sm text-blue-900">{status}</p>}
     </div>

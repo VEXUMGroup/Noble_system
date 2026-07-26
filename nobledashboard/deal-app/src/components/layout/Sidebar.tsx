@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { NotificationCenterButton } from '@/components/notifications/NotificationCenterButton';
 import { signOut } from '@/lib/supabase';
 
 type NavChild = { label: string; href: string };
@@ -132,11 +133,17 @@ interface SidebarProps {
     email: string;
     role: 'sales' | 'manager';
   };
+  unreadNotificationCount?: number;
   isOpen?: boolean;
   onClose?: () => void;
 }
 
-export function Sidebar({ currentUser, isOpen = false, onClose }: SidebarProps) {
+export function Sidebar({
+  currentUser,
+  unreadNotificationCount = 0,
+  isOpen = false,
+  onClose,
+}: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -203,16 +210,23 @@ export function Sidebar({ currentUser, isOpen = false, onClose }: SidebarProps) 
               </svg>
               <h1 className="text-xl font-bold">商談管理</h1>
             </div>
-            {/* モバイル用閉じるボタン */}
-            <button
-              onClick={onClose}
-              className="md:hidden p-1 text-gray-400 hover:text-white transition-colors"
-              aria-label="メニューを閉じる"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-2">
+              <NotificationCenterButton
+                unreadCount={unreadNotificationCount}
+                className="mr-2 h-11 w-11 border-blue-200 bg-blue-50 text-blue-500 hover:border-blue-300 hover:bg-blue-100 hover:text-blue-600"
+                onClick={handleLinkClick}
+              />
+              {/* モバイル用閉じるボタン */}
+              <button
+                onClick={onClose}
+                className="md:hidden p-1 text-gray-400 hover:text-white transition-colors"
+                aria-label="メニューを閉じる"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
 

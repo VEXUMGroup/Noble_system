@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readAppSessionCookie } from '@/lib/auth/app-session';
+import {
+  sendApprovalRejectedNotifications,
+  sendDealContractedNotifications,
+  shouldNotifyApprovalRejected,
+  shouldNotifyDealContracted,
+  type DealNotificationSnapshot,
+} from '@/lib/deal-status-notifications';
 import { writeDealWithMissingColumnFallback } from '@/lib/deal-write';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
@@ -32,6 +39,8 @@ const UPDATEABLE_FIELDS = new Set([
   'phone',
   'age',
   'prospect_level',
+  'media',
+  'campaign_id',
   'agency_type',
   'memo',
   'custom_data',
@@ -153,6 +162,18 @@ export async function PATCH(
   patch.updated_by = session.userId;
 
   const supabase = createSupabaseAdminClient();
+  const { data: previousDealRow, error: previousDealError } = await supabase
+    .from('deals')
+    .select('id, customer_name, assigned_to, status, result_status, interview_status')
+    .eq('id', dealId)
+    .single();
+
+  if (previousDealError) {
+    return NextResponse.json(
+      { error: 'deal_fetch_failed', message: previousDealError.message },
+      { status: 500 }
+    );
+  }
 
   const requiresAgePersistence = 'age' in patch || (customData && 'age' in customData);
   if (requiresAgePersistence) {
@@ -200,6 +221,45 @@ export async function PATCH(
       { error: 'update_failed', message: error.message },
       { status: 500 }
     );
+  }
+
+  if (!data) {
+    return NextResponse.json(
+      { error: 'update_failed', message: '更新後の商談データを取得できませんでした' },
+      { status: 500 }
+    );
+  }
+
+  const previousDeal = previousDealRow as DealNotificationSnapshot;
+  const nextDeal = data as DealNotificationSnapshot;
+  const notificationTasks: Promise<unknown>[] = [];
+
+  if (shouldNotifyDealContracted({ previousDeal, nextDeal, patch })) {
+    notificationTasks.push(
+      sendDealContractedNotifications({
+        deal: nextDeal,
+        eventKey: `deal_contracted:${dealId}:${String(patch.updated_at)}`,
+      })
+    );
+  }
+
+  if (shouldNotifyApprovalRejected({ previousDeal, nextDeal, patch })) {
+    notificationTasks.push(
+      sendApprovalRejectedNotifications({
+        deal: nextDeal,
+        comment: String(patch.memo ?? ''),
+        eventKey: `approval_rejected:${dealId}:${String(patch.updated_at)}`,
+      })
+    );
+  }
+
+  if (notificationTasks.length > 0) {
+    const results = await Promise.allSettled(notificationTasks);
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.error('[api/deals/[id] PATCH] notification dispatch failed', result.reason);
+      }
+    }
   }
 
   return NextResponse.json({ ok: true, deal: data });

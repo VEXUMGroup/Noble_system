@@ -1,4 +1,4 @@
--- 003_extend_deals_payments.sql
+-- 202607160002_extend_deals_payments.sql
 -- 目的：
 --   1) deals テーブルに Deal 型（フロント）の全フィールドを反映
 --   2) m_statuses に LOST（失注）を追加

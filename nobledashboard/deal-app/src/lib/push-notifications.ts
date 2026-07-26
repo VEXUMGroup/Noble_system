@@ -157,14 +157,18 @@ export async function insertNotificationLog(params: {
   type?: string;
 }) {
   const supabase = createSupabaseAdminClient();
-  const { error } = await supabase.from('notifications').insert({
-    notification_key: params.notificationKey,
-    user_id: params.userId,
-    deal_id: params.dealId,
-    type: params.type ?? 'payment_due_3days',
-    message: params.message,
-    is_read: false,
-  });
+  const { data, error } = await supabase
+    .from('notifications')
+    .insert({
+      notification_key: params.notificationKey,
+      user_id: params.userId,
+      deal_id: params.dealId,
+      type: params.type ?? 'payment_due_3days',
+      message: params.message,
+      is_read: false,
+    })
+    .select('id')
+    .single();
 
   if (error) {
     if (error.code === '23505' || error.message.toLowerCase().includes('duplicate')) {
@@ -173,5 +177,5 @@ export async function insertNotificationLog(params: {
     throw new Error(error.message);
   }
 
-  return { inserted: true };
+  return { inserted: true, id: data?.id as number | undefined };
 }

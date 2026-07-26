@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { PwaRegistration } from '@/components/pwa/PwaRegistration';
 import { UserProvider } from '@/lib/user-context';
+import { useNotifications } from '@/lib/useNotifications';
 
 type AuthenticatedShellProps = {
   children: React.ReactNode;
@@ -20,6 +21,7 @@ export function AuthenticatedShell({
   currentUser,
 }: AuthenticatedShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { unreadCount } = useNotifications(5);
 
   return (
     <UserProvider currentUser={currentUser}>
@@ -27,6 +29,7 @@ export function AuthenticatedShell({
       <div className="flex min-h-screen bg-gray-50">
         <Sidebar
           currentUser={currentUser}
+          unreadNotificationCount={unreadCount}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
         />

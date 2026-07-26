@@ -1,16 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  mockDeals,
-  mockNotifications,
-  getUserName,
-  formatDate,
-  getDaysUntil,
-} from '@/lib/mock-data';
+import { NotificationIcon } from '@/components/notifications/NotificationIcon';
+import { formatDate } from '@/lib/format';
+import { getDaysUntilYmd } from '@/lib/date-utils';
+import { formatNotificationDateTime } from '@/lib/notifications';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useDeals } from '@/lib/useDeals';
+import { useMasterData } from '@/lib/useMasterData';
+import { useCurrentUser } from '@/lib/useCurrentUser';
+import { useNotifications } from '@/lib/useNotifications';
 
 // Icons
 const AlertCircle = ({ className }: { className?: string }) => (
@@ -32,61 +33,6 @@ const AlertCircle = ({ className }: { className?: string }) => (
   </svg>
 );
 
-const Bell = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-  </svg>
-);
-
-const CheckCircle = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-    <polyline points="22 4 12 14.01 9 11.01" />
-  </svg>
-);
-
-const Info = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="12" cy="12" r="10" />
-    <line x1="12" y1="16" x2="12" y2="12" />
-    <line x1="12" y1="8" x2="12.01" y2="8" />
-  </svg>
-);
-
 function parseLocalDate(dateString: string): Date {
   const [year, month, day] = dateString.split('-').map(Number);
   return new Date(year, month - 1, day);
@@ -94,16 +40,38 @@ function parseLocalDate(dateString: string): Date {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const reviewAlertStatuses = new Set(['RS_IN_PROG', 'RS_REDEAL']);
   // 仕様書 5.8: ダッシュボードアクセス時にポップアップ自動表示
   const [showRetirementPopup, setShowRetirementPopup] = useState(true);
+  const { userId, role, isLoading: userLoading } = useCurrentUser();
+  const { deals: rawDeals, isLoading: dealsLoading } = useDeals(
+    role === 'manager' ? undefined : userId ? { assigned_to: userId } : undefined
+  );
+  const { users, isLoading: masterLoading } = useMasterData();
+  const { notifications, isLoading: notificationsLoading } = useNotifications(5);
+  const deals = rawDeals as Array<Record<string, any>>;
+  const isLoading = userLoading || dealsLoading || masterLoading || notificationsLoading;
+
+  const getUserName = (assignedUserId: string) =>
+    users.find((user) => user.id === assignedUserId)?.name ?? assignedUserId ?? '-';
+
+  const getDaysUntilRetirement = (retirementDate?: string | null) => {
+    if (!retirementDate) return null;
+    return getDaysUntilYmd(retirementDate);
+  };
+
+  const isRetirementWithinDays = (retirementDate: string | null | undefined, maxDays: number) => {
+    const daysUntilRetirement = getDaysUntilRetirement(retirementDate);
+    return daysUntilRetirement !== null && daysUntilRetirement >= 0 && daysUntilRetirement <= maxDays;
+  };
 
   // Calculate summary stats
-  const totalDeals = mockDeals.length;
-  const newAndInterviewedDeals = mockDeals.filter((d) =>
+  const totalDeals = deals.length;
+  const newAndInterviewedDeals = deals.filter((d) =>
     ['NEW', 'INTERVIEWED'].includes(d.status)
   ).length;
 
-  const contractedDeals = mockDeals.filter((d) => {
+  const contractedDeals = deals.filter((d) => {
     const contractedStatuses = [
       'CONTRACTED',
       'DETAIL_ENTERED',
@@ -115,45 +83,34 @@ export default function DashboardPage() {
     return contractedStatuses.includes(d.status);
   }).length;
 
-  const consideringDeals = mockDeals.filter((d) => d.status === 'CONSIDERING').length;
+  const consideringDeals = deals.filter((d) => reviewAlertStatuses.has(d.status)).length;
 
-  // Get deals within 14 days of retirement with CONSIDERING status
-  const retirementAlerts = mockDeals.filter((deal) => {
-    if (deal.status !== 'CONSIDERING') return false;
-    return getDaysUntil(deal.retirement_date) <= 14;
+  // Get review-management deals within 14 days of retirement
+  const retirementAlerts = deals.filter((deal) => {
+    if (!reviewAlertStatuses.has(deal.status)) return false;
+    return isRetirementWithinDays(deal.retirement_date, 14);
   });
 
   // Get retirements within the next 30 days sorted by retirement_date ascending
-  const upcomingRetirees = [...mockDeals]
-    .filter((deal) => {
-      const daysUntilRetirement = getDaysUntil(deal.retirement_date);
-      return Number.isFinite(daysUntilRetirement) && daysUntilRetirement >= 0 && daysUntilRetirement <= 30;
-    })
-    .sort((a, b) => {
-      return parseLocalDate(a.retirement_date).getTime() - parseLocalDate(b.retirement_date).getTime();
-    });
-
-  // Get notifications
-  const notifications = mockNotifications;
-
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'info':
-        return <Info className="w-4 h-4" />;
-      case 'warning':
-      case 'retirement_alert':
-        return <AlertCircle className="w-4 h-4" />;
-      case 'success':
-      case 'contract_complete':
-        return <CheckCircle className="w-4 h-4" />;
-      default:
-        return <Bell className="w-4 h-4" />;
-    }
-  };
+  const upcomingRetirees = useMemo(
+    () =>
+      [...deals]
+        .filter((deal) => isRetirementWithinDays(deal.retirement_date, 30))
+        .sort((a, b) => {
+          return parseLocalDate(a.retirement_date).getTime() - parseLocalDate(b.retirement_date).getTime();
+        }),
+    [deals]
+  );
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">ダッシュボード</h1>
+
+      {isLoading && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          ダッシュボードを読み込み中です...
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
@@ -168,7 +125,7 @@ export default function DashboardPage() {
           <div className="text-gray-500 text-xs mt-1 sm:mt-2">件</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border-l-4 border-orange-500">
-          <div className="text-gray-600 text-xs sm:text-sm font-medium mb-1 sm:mb-2">検討中</div>
+          <div className="text-gray-600 text-xs sm:text-sm font-medium mb-1 sm:mb-2">検討管理</div>
           <div className="text-2xl sm:text-3xl font-bold text-gray-900">{consideringDeals}</div>
           <div className="text-gray-500 text-xs mt-1 sm:mt-2">件</div>
         </div>
@@ -182,7 +139,7 @@ export default function DashboardPage() {
             <div className="space-y-3">
               <h2 className="text-lg font-semibold text-gray-900">退職日アラート</h2>
               {retirementAlerts.map((deal) => {
-                const daysRemaining = getDaysUntil(deal.retirement_date);
+                const daysRemaining = getDaysUntilRetirement(deal.retirement_date);
                 return (
                   <div
                     key={deal.id}
@@ -226,7 +183,7 @@ export default function DashboardPage() {
             <div className="sm:hidden space-y-2">
               {upcomingRetirees.length > 0 ? (
                 upcomingRetirees.map((deal) => {
-                  const daysUntilRetirement = getDaysUntil(deal.retirement_date);
+                  const daysUntilRetirement = getDaysUntilRetirement(deal.retirement_date);
                   return (
                     <div
                       key={deal.id}
@@ -294,29 +251,46 @@ export default function DashboardPage() {
 
         {/* Notifications Sidebar */}
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">通知</h2>
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden divide-y divide-gray-200">
-            {notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className={`p-4 ${notification.is_read ? 'bg-white' : 'bg-blue-50'}`}
-              >
-                <div className="flex gap-3">
-                  <div className="text-blue-600 flex-shrink-0 mt-0.5">
-                    {getNotificationIcon(notification.type)}
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">通知</h2>
+            <Link
+              href="/notifications"
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+            >
+              一覧を見る
+            </Link>
+          </div>
+          <div className="overflow-hidden rounded-xl bg-white shadow-sm divide-y divide-gray-200">
+            {notifications.length > 0 ? (
+              notifications.map((notification) => (
+                <Link
+                  key={notification.id}
+                  href={notification.detailUrl}
+                  className={`block p-4 transition hover:bg-gray-50 ${
+                    notification.isRead ? 'bg-white' : 'bg-blue-50'
+                  }`}
+                >
+                  <div className="flex gap-3">
+                    <div className="mt-0.5 flex-shrink-0 text-blue-600">
+                      <NotificationIcon type={notification.type} className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-grow">
+                      <p className="text-sm font-medium text-gray-900">{notification.message}</p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {formatNotificationDateTime(notification.createdAt)}
+                      </p>
+                    </div>
+                    {!notification.isRead && (
+                      <div className="mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-blue-600"></div>
+                    )}
                   </div>
-                  <div className="flex-grow min-w-0">
-                    <p className="text-sm text-gray-900 font-medium">{notification.message}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {formatDate(notification.created_at.split('T')[0])}
-                    </p>
-                  </div>
-                  {!notification.is_read && (
-                    <div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0 mt-2"></div>
-                  )}
-                </div>
+                </Link>
+              ))
+            ) : (
+              <div className="px-4 py-8 text-center text-sm text-gray-500">
+                表示できる通知はまだありません。
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
@@ -351,7 +325,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 仕様書 5.8: 退職日14日前ポップアップ通知
-          - 発動条件: 検討中案件で退職予定日の14日前
+          - 発動条件: 商談中・再商談案件で退職予定日の14日前
           - 表示タイミング: ダッシュボードアクセス時に自動表示
           - アクションボタン: 「商談詳細を確認」/ 「後で確認」
           - 複数案件: 件数バッジ＋リスト形式で全件表示 */}
@@ -364,7 +338,7 @@ export default function DashboardPage() {
               <div className="text-white">
                 <h2 className="text-lg font-bold">退職日アラート</h2>
                 <p className="text-yellow-100 text-sm">
-                  {retirementAlerts.length}件の検討中案件で退職予定日が14日以内です
+                  {retirementAlerts.length}件の商談中・再商談案件で退職予定日が14日以内です
                 </p>
               </div>
             </div>
@@ -372,7 +346,7 @@ export default function DashboardPage() {
             {/* Alert List */}
             <div className="px-6 py-4 max-h-80 overflow-y-auto divide-y divide-gray-100">
               {retirementAlerts.map((deal) => {
-                const daysRemaining = getDaysUntil(deal.retirement_date);
+                const daysRemaining = getDaysUntilRetirement(deal.retirement_date);
                 return (
                   <div key={deal.id} className="py-3 flex items-center justify-between gap-4">
                     <div className="min-w-0">

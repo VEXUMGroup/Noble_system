@@ -60,6 +60,8 @@ CREATE TABLE deals (
   assigned_to VARCHAR(50) NOT NULL REFERENCES m_users(id),
   deal_date DATE NOT NULL,
   source VARCHAR(30) NOT NULL REFERENCES m_sources(code),
+  media VARCHAR(100),
+  campaign_id VARCHAR(200),
   status VARCHAR(20) NOT NULL REFERENCES m_statuses(code),
   retirement_date DATE,
   agency_code VARCHAR(20) REFERENCES m_agencies(code),

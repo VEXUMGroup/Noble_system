@@ -1,4 +1,4 @@
--- 002_master_tables.sql
+-- 202607160001_master_tables.sql
 -- 目的：
 --   1) 4つのマスタ（m_users / m_sources / m_plans / m_agencies）に対する
 --      フロントエンドからのCRUDを成立させる

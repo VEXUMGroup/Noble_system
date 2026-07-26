@@ -1,5 +1,25 @@
 export const prospectLevels = ['A', 'B', 'C'] as const;
 export const agencyTypes = ['紹介代理店', '広告', '自社'] as const;
+export const mediaOptions = [
+  'Google',
+  'Meta',
+  'YTS（Google）',
+  'TikTok',
+  'アフィリエイト',
+  '代理店',
+  '運用',
+] as const;
+export const campaignIdOptions = [
+  'Google(リス)_比較記事',
+  'Google(リス)_LP',
+  'Google(リス)_LP3',
+  'Google(リス)_LP3 新',
+  'Google(リス)_LP3 新2',
+  'YTS_動画',
+  'YTS_インフィード',
+  'YTS_ディスカバー',
+  'Meta_通常記事×直LINE',
+] as const;
 
 export const hrProposalOptions = ['提案済み', '未提案', '不要'] as const;
 export const hrFeasibilityOptions = ['可能', '要確認', '不可'] as const;

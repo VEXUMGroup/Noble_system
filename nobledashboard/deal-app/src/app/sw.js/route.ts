@@ -2,12 +2,16 @@ export function GET() {
   const script = `
     self.addEventListener('push', (event) => {
       const payload = event.data ? event.data.json() : {};
+      const data = {
+        ...(payload.data || {}),
+        url: (payload.data && payload.data.url) || payload.url || '/notifications',
+      };
       const title = payload.title || '通知';
       const options = {
         body: payload.body || '',
         icon: '/favicon.ico',
         badge: '/favicon.ico',
-        data: payload.data || {},
+        data,
         tag: payload.tag,
         renotify: true,
       };
@@ -16,7 +20,7 @@ export function GET() {
 
     self.addEventListener('notificationclick', (event) => {
       event.notification.close();
-      const targetUrl = (event.notification?.data && event.notification.data.url) || '/payments';
+      const targetUrl = (event.notification?.data && event.notification.data.url) || '/notifications';
       event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
           for (const client of clientList) {
@@ -40,4 +44,3 @@ export function GET() {
     },
   });
 }
-

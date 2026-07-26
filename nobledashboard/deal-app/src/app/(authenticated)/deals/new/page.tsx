@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { prospectLevels, agencyTypes } from '@/lib/constants';
+import { prospectLevels, agencyTypes, mediaOptions, campaignIdOptions } from '@/lib/constants';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useMasterData } from '@/lib/useMasterData';
 import AgencySearchSelect from '@/components/ui/AgencySearchSelect';
@@ -20,6 +20,8 @@ interface FormData {
   phone: string;
   result_status: string;
   prospect_level: string;
+  media: string;
+  campaign_id: string;
   referrer: string;
   agency_type: string;
   memo: string;
@@ -31,7 +33,7 @@ interface FormData {
 export default function NewDealPage() {
   const router = useRouter();
   const { users, sources, statuses, agencies } = useMasterData();
-  const resultStatuses = statuses.filter(s => s.code.startsWith('RS_'));
+  const resultStatuses = statuses.filter((s) => s.code.startsWith('RS_') && s.code !== 'RS_PEND');
 
 
   const [formData, setFormData] = useState<FormData>({
@@ -45,6 +47,8 @@ export default function NewDealPage() {
     phone: '',
     result_status: '',
     prospect_level: '',
+    media: '',
+    campaign_id: '',
     referrer: '',
     agency_type: '',
     memo: '',
@@ -109,6 +113,8 @@ export default function NewDealPage() {
       phone: formData.phone || undefined,
       result_status: formData.result_status || undefined,
       prospect_level: formData.prospect_level || undefined,
+      media: nullIfEmpty(formData.media),
+      campaign_id: nullIfEmpty(formData.campaign_id),
       referrer: formData.referrer || undefined,
       agency_type: formData.agency_type || undefined,
       memo: formData.memo || undefined,
@@ -322,6 +328,36 @@ export default function NewDealPage() {
             </select>
           </div>
 
+          <div>
+            <label className={labelClass}>媒体</label>
+            <select
+              name="media"
+              value={formData.media}
+              onChange={handleChange}
+              className={selectCls('media')}
+            >
+              <option value="">-- 未選択 --</option>
+              {mediaOptions.map((media) => (
+                <option key={media} value={media}>{media}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className={labelClass}>キャンペーンID</label>
+            <select
+              name="campaign_id"
+              value={formData.campaign_id}
+              onChange={handleChange}
+              className={selectCls('campaign_id')}
+            >
+              <option value="">-- 未選択 --</option>
+              {campaignIdOptions.map((campaignId) => (
+                <option key={campaignId} value={campaignId}>{campaignId}</option>
+              ))}
+            </select>
+          </div>
+
           {/* 流入経路（エルステ経由） */}
           <div>
             <label className={labelClass}>
@@ -364,11 +400,10 @@ export default function NewDealPage() {
               退職予定日
             </label>
             <input
-              type="text"
+              type="date"
               name="retirement_date"
               value={formData.retirement_date}
               onChange={handleChange}
-              placeholder="例：2026年6月末、今月末"
               className={inputCls('retirement_date')}
             />
             {errors.retirement_date && <p className="text-red-500 text-xs mt-1">{errors.retirement_date}</p>}
