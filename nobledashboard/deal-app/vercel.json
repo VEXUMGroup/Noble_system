@@ -8,6 +8,10 @@
     {
       "path": "/api/notifications/next-action-today",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/notifications/retirement-alerts",
+      "schedule": "0 0 * * *"
     }
   ]
 }
